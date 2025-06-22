@@ -50,7 +50,7 @@ cd gatekeeper-server
 ```bash
 pdm venv create 3.10
 pdm use -f .venv
-pdm pdm venv activate
+pdm venv activate
 pdm install
 ```
 
