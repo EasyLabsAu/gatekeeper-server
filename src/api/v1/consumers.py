@@ -62,7 +62,7 @@ async def update_consumer(
 
 
 @consumer_router.delete(
-    "/{consumer_id}", response_model=APIResponse, summary="Delete consumer by ID"
+    "/{consumer_id}", response_model=APIResponse, summary="Soft delete consumer by ID"
 )
 async def delete_consumer(
     consumer_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
