@@ -25,7 +25,7 @@ class AuthenticateRequest(BaseHTTPMiddleware):
 
             token = auth_header.split("Bearer ")[-1].strip()
             payload = verify_access_token(token)
-            request.state.user = payload  # type: ignore[attr-defined]
+            request.state.provider = payload  # type: ignore[attr-defined]
             return await call_next(request)
 
         except APIError as e:

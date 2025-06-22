@@ -45,9 +45,12 @@ git clone https://github.com/EasyLabsAu/gatekeeper-server
 cd gatekeeper-server
 ```
 
-2. Install dependencies:
+2. Setup and install dependencies:
 
 ```bash
+pdm venv create 3.10
+pdm use -f .venv
+pdm pdm venv activate
 pdm install
 ```
 

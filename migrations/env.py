@@ -2,6 +2,8 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy.sql.schema import MetaData
+from sqlmodel import SQLModel
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -17,10 +19,20 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 
-from models import SQLModel, Users  # noqa
 from core.config import settings  # noqa
+from models import (  # noqa: E402, F401
+    Providers,
+    Sessions,
+    Consumers,
+    Forms,
+    FormSections,
+    FormQuestions,
+    FormResponses,
+    FormSectionResponses,
+    FormQuestionResponses,
+)
 
-target_metadata = SQLModel.metadata
+target_metadata: MetaData = SQLModel.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

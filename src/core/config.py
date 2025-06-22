@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     POSTGRESQL_PASSWORD: str = ""
     POSTGRESQL_HOST: str = "localhost"
     POSTGRESQL_PORT: int = 5432
-    POSTGRESQL_DB: str = "fastapi"
+    POSTGRESQL_DB: str = "gatekeeper"
     POSTGRESQL_POOL_SIZE: int = 5
     POSTGRESQL_MAX_OVERFLOW: int = 10
 

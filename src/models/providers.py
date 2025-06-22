@@ -6,28 +6,31 @@ from uuid import UUID
 from pydantic import EmailStr
 from pydantic.config import ConfigDict
 from sqlalchemy import Column, DateTime
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from helpers.model import BaseModel
 
 
-class UserRole(str, Enum):
-    USER = "USER"
-    ADMIN = "ADMIN"
+class ProviderAccess(str, Enum):
+    READ_DATA = "read_data"
+    WRITE_DATA = "write_data"
+    DELETE_DATA = "delete_data"
+    READ_USER = "read_user"
+    WRITE_USER = "write_user"
+    DELETE_USER = "delete_user"
 
 
-class UserBase(BaseModel):
+class ProviderBase(BaseModel):
     email: EmailStr = Field(index=True, unique=True, max_length=320)
     first_name: str = Field(max_length=100)
     last_name: str = Field(max_length=100)
-    role: UserRole = Field(
-        default=UserRole.USER,
-        sa_column=Column(SAEnum(UserRole)),
-        description="User role options",
+    access: list[ProviderAccess] = Field(
+        default_factory=lambda: [ProviderAccess.READ_DATA],
+        sa_column=Column(JSONB),
     )
     password: str = Field(repr=False)
+    phone_number: str | None = None
     is_active: bool = Field(default=True)
     is_verified: bool = Field(default=False)
     verification_token: str | None = None
@@ -47,21 +50,23 @@ class UserBase(BaseModel):
     )
 
 
-class UserCreate(SQLModel):
+class ProviderCreate(SQLModel):
     email: EmailStr
     first_name: str
     last_name: str
     password: str
+    phone_number: str | None = None
 
 
-class UserRead(SQLModel):
+class ProviderRead(SQLModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     email: EmailStr
     first_name: str
     last_name: str
-    role: UserRole
+    phone_number: str | None = None
+    access: list[ProviderAccess]
     is_active: bool
     is_verified: bool
     meta_data: dict[str, Any]
@@ -70,7 +75,7 @@ class UserRead(SQLModel):
     authenticated_at: datetime | None
 
 
-class UserUpdate(SQLModel):
+class ProviderUpdate(SQLModel):
     email: EmailStr | None = None
     first_name: str | None = None
     last_name: str | None = None
@@ -78,26 +83,26 @@ class UserUpdate(SQLModel):
     authenticated_at: datetime | None = None
 
 
-class UserQuery(BaseModel):
+class ProviderQuery(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     email: EmailStr | None = None
 
 
-class UserValidate(SQLModel):
+class ProviderValidate(SQLModel):
     email: EmailStr
     password: str
 
 
-class UserRevalidate(SQLModel):
+class ProviderRevalidate(SQLModel):
     refresh_token: str
 
 
-class UserInvalidate(SQLModel):
+class ProviderInvalidate(SQLModel):
     refresh_token: str
 
 
-class UserManage(SQLModel):
+class ProviderManage(SQLModel):
     email: EmailStr
     new_email: EmailStr | None = None
     password: str | None = None
@@ -105,7 +110,7 @@ class UserManage(SQLModel):
     token: str | None = None
 
 
-class UserManageAction(str, Enum):
+class ProviderManageAction(str, Enum):
     START_EMAIL_VERIFICATION = "start-email-verification"
     FINISH_EMAIL_VERIFICATION = "finish-email-verification"
     START_EMAIL_AUTHENTICATION = "start-email-authentication"
@@ -116,19 +121,19 @@ class UserManageAction(str, Enum):
     UPDATE_PASSWORD = "update-password"
 
 
-class UserAuthTokens(SQLModel):
+class ProviderAuthTokens(SQLModel):
     access_token: str
     refresh_token: str
 
 
-class UserAuthRead(SQLModel):
-    user: UserRead
-    auth: UserAuthTokens
+class ProviderAuthRead(SQLModel):
+    provider: ProviderRead
+    auth: ProviderAuthTokens
 
 
-class UserManageRead(SQLModel):
+class ProviderManageRead(SQLModel):
     message: str
 
 
-class Users(UserBase, table=True):
-    meta_data: dict[str, Any] = Field(default_factory=dict, sa_type=JSON)
+class Providers(ProviderBase, table=True):
+    meta_data: dict[str, Any] = Field(default_factory=dict, sa_type=JSONB)

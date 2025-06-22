@@ -5,12 +5,13 @@ Revises: ${down_revision | comma,n}
 Create Date: ${create_date}
 
 """
-from typing import Sequence, Union  # noqa: UP035
+from typing import Sequence, Union  # noqa: F401, UP035
 
 import sqlalchemy as sa
+import sqlmodel  # noqa: F401
 from alembic import op
 from sqlalchemy.dialects import postgresql
-from sqlmodel import AutoString  # Added correct import
+from sqlmodel import AutoString  
 ${imports if imports else ""}
 
 # revision identifiers, used by Alembic.

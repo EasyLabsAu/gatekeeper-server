@@ -11,12 +11,12 @@ from core.app import App
 from core.config import settings
 from core.database import check_database_connection, engine
 from helpers.auth import get_public_paths, public_route
-from helpers.constants import USER_CREATED_EVENT
+from helpers.constants import PROVIDER_CREATED_EVENT
 from helpers.events import events
 from helpers.logger import Logger
 from middlewares.auth import AuthenticateRequest
 from middlewares.log_requests import LogRequests
-from workers.users import on_user_created
+from workers.providers import on_provider_created
 
 logger = Logger(__name__)
 
@@ -30,7 +30,7 @@ async def app_lifespan(server: FastAPI) -> AsyncGenerator[None, None]:  # noqa: 
     logger.info("Lifespan startup: Starting worker")
     await events.start_worker()
     logger.info("Lifespan startup: Registering event handlers")
-    events.on(USER_CREATED_EVENT, on_user_created)
+    events.on(PROVIDER_CREATED_EVENT, on_provider_created)
     yield
     logger.info("Lifespan shutdown: Stopping worker")
     await events.stop_worker()
