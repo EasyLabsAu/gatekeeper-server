@@ -1,0 +1,6 @@
+USER_CREATED_EVENT = "user_created"
+USER_DELETED_EVENT = "user_deleted"
+USER_UPDATED_EVENT = "user_updated"
+USER_VERIFIED_EVENT = "user_verified"
+USER_PASSWORD_RESET_EVENT = "user_password_reset"
+USER_ACCOUNT_RECOVERY_EVENT = "user_account_recovery"

@@ -1,0 +1,73 @@
+[project]
+name = "gatekeeper-server"
+version = "0.1.0"
+description = "gatekeeper fastapi server"
+authors = [
+    { name = "Monarch Maisuriya", email = "monarchmaisuriya@gmail.com" },
+]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+
+dependencies = [
+    "fastapi[standard]>=0.115.12",
+    "pydantic>=2.11.5",
+    "pydantic-settings>=2.9.1",
+    "python-dotenv>=1.1.0",
+    "sqlmodel>=0.0.24",
+    "python-multipart<1.0.0,>=0.0.7",
+    "email-validator>=2.2.0",
+    "passlib[bcrypt]<2.0.0,>=1.7.4",
+    "tenacity<9.0.0,>=8.2.3",
+    "alembic<2.0.0,>=1.12.1",
+    "psycopg[binary]<4.0.0,>=3.1.13",
+    "bcrypt==4.0.1",
+    "pyjwt<3.0.0,>=2.8.0",
+    "greenlet>=3.2.3",
+    "aiosmtplib>=4.0.1",
+    "colorlog>=6.9.0"
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11.13",
+    "pyrefly>=0.20.2",
+]
+test = [
+    "pytest>=8.4.1",
+]
+
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm.scripts]
+seed = "scripts.seed:main"
+dev = "pdm run uvicorn src.server:app --reload --lifespan on"
+prod = "fastapi run src"
+migrate-up = "alembic upgrade head"
+migrate-down = "alembic downgrade -1"
+make-migration = "alembic revision --autogenerate -m \"%(message)s\""
+lint = "ruff check ."
+lint-fix = "ruff check . --fix"
+format = "ruff format ."
+
+[tool.ruff]
+target-version = "py310"
+exclude = [".venv", "alembic"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG001"]
+ignore = ["E501", "B008", "W191", "B904"]
+
+[tool.ruff.lint.pyupgrade]
+keep-runtime-typing = true
+
+[tool.pdm]
+distribution = true
+package-dir = {"" = "src"}
+
+[tool.pyrefly]
+project-includes = ["**/*"]
+project-excludes = ["**/*venv/**/*"]

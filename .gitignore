@@ -1,0 +1,79 @@
+# Python bytecode files
+*.pyc
+*.pyo
+__pycache__/
+
+# Ruff cache
+.ruff_cache/
+
+# Pytest cache
+.pytest_cache/
+
+# Pytest temporary files  
+.pytest_runner
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+.eggs/
+.egg-info/
+.installed.cfg
+*.egg
+
+# PDM cache
+.pdm/
+.pdm-build/
+.pdm-python
+
+# Cython extension files
+*.so
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env
+
+# FastAPI specific
+*.sqlite3
+*.db
+
+# Uvicorn log files
+*.log
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Miscellaneous
+.DS_Store
+*.egg-info/
+*.egg
+dist/
+build/
+*.bak
+*.swp
+*.swo
+
+# Python packaging
+.Python
+pip-wheel-metadata/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Coverage
+.coverage
+.coverage.*
+nosetests.xml
+*.cover
+*.hypothesis/
+*.tox/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
