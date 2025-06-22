@@ -21,11 +21,11 @@ def Logger(name: str = settings.PROJECT_NAME) -> logging.Logger:
         fmt="%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         log_colors={
-            "DEBUG": "bold_blue",
-            "INFO": "bold_green",
-            "WARNING": "bold_yellow",
-            "ERROR": "bold_red",
-            "CRITICAL": "bold_red,bg_white",
+            "DEBUG": "blue",
+            "INFO": "green",
+            "WARNING": "yellow",
+            "ERROR": "red",
+            "CRITICAL": "red,bg_white",
         },
     )
 

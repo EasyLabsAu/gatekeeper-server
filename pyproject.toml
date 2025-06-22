@@ -25,7 +25,8 @@ dependencies = [
     "pyjwt<3.0.0,>=2.8.0",
     "greenlet>=3.2.3",
     "aiosmtplib>=4.0.1",
-    "colorlog>=6.9.0"
+    "colorlog>=6.9.0",
+    "python-socketio>=5.13.0"
 ]
 
 [dependency-groups]

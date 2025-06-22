@@ -7,8 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
 from core.database import check_database_connection, engine
+from helpers.constants import CORS_CONFIGS
 from helpers.logger import Logger
-from middlewares.log_requests import LogRequests
+from middlewares.log import LogRequests
 
 logger = Logger(__name__)
 
@@ -38,19 +39,8 @@ class App:
 
     def _configure_middlewares(self, middlewares: Sequence[MiddlewareSpec] | None):
         if middlewares is None:
-            cors_origins = (
-                settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else ["*"]
-            )
             middlewares = [
-                (
-                    CORSMiddleware,
-                    {
-                        "allow_origins": cors_origins,
-                        "allow_credentials": True,
-                        "allow_methods": ["*"],
-                        "allow_headers": ["*"],
-                    },
-                ),
+                (CORSMiddleware, CORS_CONFIGS),
                 (LogRequests, {}),
             ]
 

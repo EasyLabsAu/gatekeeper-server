@@ -8,7 +8,7 @@ from helpers.auth import verify_access_token
 from helpers.utils import APIError
 
 
-class AuthenticateRequest(BaseHTTPMiddleware):
+class AuthenticateRequests(BaseHTTPMiddleware):
     def __init__(self, app, public_paths_provider: Callable[[], set[str]]):
         super().__init__(app)  # 👈 required to initialize base Starlette middleware
         self.public_paths_provider = public_paths_provider

@@ -11,11 +11,11 @@ from core.app import App
 from core.config import settings
 from core.database import check_database_connection, engine
 from helpers.auth import get_public_paths, public_route
-from helpers.constants import PROVIDER_CREATED_EVENT
+from helpers.constants import CORS_CONFIGS, PROVIDER_CREATED_EVENT
 from helpers.events import events
 from helpers.logger import Logger
-from middlewares.auth import AuthenticateRequest
-from middlewares.log_requests import LogRequests
+from middlewares.auth import AuthenticateRequests
+from middlewares.log import LogRequests
 from workers.providers import on_provider_created
 
 logger = Logger(__name__)
@@ -23,6 +23,9 @@ logger = Logger(__name__)
 
 @asynccontextmanager
 async def setup_lifespan(server: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
+    logger.info(
+        f"Starting: {settings.PROJECT_NAME}, version: {settings.VERSION} in {settings.ENV} environment"
+    )
     if not await check_database_connection(engine):
         raise RuntimeError("Database connection failed after retries")
 
@@ -37,37 +40,27 @@ async def setup_lifespan(server: FastAPI) -> AsyncGenerator[None, None]:  # noqa
 
 
 def setup_middlewares():
-    cors_origins = settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else ["*"]
-
     def public_paths():
         logger.info(f"Public paths: {get_public_paths(app)}")
         return get_public_paths(app)
 
+    AUTH_CONFIG = {
+        "public_paths_provider": public_paths,
+    }
+
     return [
-        (
-            # CORS Middleware
-            CORSMiddleware,
-            {
-                "allow_origins": cors_origins,
-                "allow_credentials": True,
-                "allow_methods": ["*"],
-                "allow_headers": ["*"],
-            },
-        ),
-        (
-            AuthenticateRequest,
-            {"public_paths_provider": public_paths},
-        ),
+        (CORSMiddleware, CORS_CONFIGS),
+        (AuthenticateRequests, AUTH_CONFIG),
         (LogRequests, {}),
     ]
 
 
-server: App = App(
+server = App(
     router=setup_routes(),
     lifespan=setup_lifespan,
     middlewares=setup_middlewares(),
 )
-app: FastAPI = server.get_app()
+app = server.get_app()
 
 
 @app.get(

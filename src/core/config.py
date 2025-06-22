@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "FastAPI Bootstrapped"
+    PROJECT_NAME: str = "Gatekeeper Server"
     VERSION: str = "0.1.0"
 
     # Environment settings
