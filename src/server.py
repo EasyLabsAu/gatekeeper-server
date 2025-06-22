@@ -22,7 +22,7 @@ logger = Logger(__name__)
 
 
 @asynccontextmanager
-async def app_lifespan(server: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
+async def setup_lifespan(server: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     if not await check_database_connection(engine):
         raise RuntimeError("Database connection failed after retries")
 
@@ -36,7 +36,7 @@ async def app_lifespan(server: FastAPI) -> AsyncGenerator[None, None]:  # noqa: 
     await events.stop_worker()
 
 
-def app_middlewares():
+def setup_middlewares():
     cors_origins = settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else ["*"]
 
     def public_paths():
@@ -62,12 +62,12 @@ def app_middlewares():
     ]
 
 
-server = App(
+server: App = App(
     router=setup_routes(),
-    lifespan=app_lifespan,
-    middlewares=app_middlewares(),
+    lifespan=setup_lifespan,
+    middlewares=setup_middlewares(),
 )
-app = server.get_app()
+app: FastAPI = server.get_app()
 
 
 @app.get(
