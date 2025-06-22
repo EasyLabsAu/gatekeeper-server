@@ -21,7 +21,7 @@ class ProviderAccess(str, Enum):
     DELETE_USER = "delete_user"
 
 
-class ProviderBase(BaseModel):
+class Providers(BaseModel, table=True):
     email: EmailStr = Field(index=True, unique=True, max_length=320)
     first_name: str = Field(max_length=100)
     last_name: str = Field(max_length=100)
@@ -48,6 +48,7 @@ class ProviderBase(BaseModel):
     authenticated_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
     )
+    meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
 
 
 class ProviderCreate(SQLModel):
@@ -133,7 +134,3 @@ class ProviderAuthRead(SQLModel):
 
 class ProviderManageRead(SQLModel):
     message: str
-
-
-class Providers(ProviderBase, table=True):
-    meta_data: dict[str, Any] = Field(default_factory=dict, sa_type=JSONB)

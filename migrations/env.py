@@ -1,13 +1,15 @@
 from logging.config import fileConfig
 
 from alembic import context
+from alembic.config import Config
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy.engine.base import Engine
 from sqlalchemy.sql.schema import MetaData
 from sqlmodel import SQLModel
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
-config = context.config
+config: Config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -40,7 +42,7 @@ target_metadata: MetaData = SQLModel.metadata
 # ... etc.
 
 
-def get_url():
+def get_url() -> str:
     return str(settings.POSTGRES_URI)
 
 
@@ -56,7 +58,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = get_url()
+    url: str = get_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -75,10 +77,10 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    configuration = config.get_section(config.config_ini_section) or {}
+    configuration: dict[str, str] = config.get_section(config.config_ini_section) or {}
     configuration["sqlalchemy.url"] = get_url()
 
-    connectable = engine_from_config(
+    connectable: Engine = engine_from_config(
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,

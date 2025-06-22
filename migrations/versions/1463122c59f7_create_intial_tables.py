@@ -1,8 +1,8 @@
 """create intial tables
 
-Revision ID: 785b92c4c5c0
+Revision ID: 1463122c59f7
 Revises: 
-Create Date: 2025-06-22 17:22:36.477738
+Create Date: 2025-06-22 17:48:44.655170
 
 """
 from typing import Sequence, Union  # noqa: F401, UP035
@@ -15,7 +15,7 @@ from sqlmodel import AutoString
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '785b92c4c5c0'
+revision: str = '1463122c59f7'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -35,7 +35,7 @@ def upgrade() -> None:
     sa.Column('phone_number', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('address', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('active_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_consumers_email'), 'consumers', ['email'], unique=True)
@@ -61,7 +61,7 @@ def upgrade() -> None:
     sa.Column('reset_token', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('reset_token_expires', sa.DateTime(timezone=True), nullable=True),
     sa.Column('authenticated_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_providers_email'), 'providers', ['email'], unique=True)
@@ -73,8 +73,10 @@ def upgrade() -> None:
     sa.Column('deleted_at', sa.DateTime(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('type', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('created_by', sa.Uuid(), nullable=False),
+    sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.ForeignKeyConstraint(['created_by'], ['providers.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -87,13 +89,14 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.Column('consumer_id', sa.Uuid(), nullable=False),
     sa.Column('status', sa.Enum('PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', name='sessionstatus'), nullable=True),
-    sa.Column('transcription', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('transcription', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('initiated_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('concluded_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('tags', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column('files', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('feedback', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('rating', sa.Float(), nullable=True),
-    sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.ForeignKeyConstraint(['consumer_id'], ['consumers.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -105,9 +108,10 @@ def upgrade() -> None:
     sa.Column('deleted_at', sa.DateTime(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.Column('form_id', sa.Uuid(), nullable=False),
-    sa.Column('user_id', sa.Uuid(), nullable=False),
+    sa.Column('session_id', sa.Uuid(), nullable=False),
     sa.Column('submitted_at', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.ForeignKeyConstraint(['form_id'], ['forms.id'], ),
+    sa.ForeignKeyConstraint(['session_id'], ['sessions.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_form_responses_id'), 'form_responses', ['id'], unique=False)

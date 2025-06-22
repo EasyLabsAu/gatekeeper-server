@@ -11,7 +11,7 @@ from sqlmodel import Field, SQLModel
 from helpers.model import BaseModel
 
 
-class ConsumerBase(BaseModel):
+class Consumers(BaseModel, table=True):
     email: EmailStr = Field(index=True, unique=True, max_length=320)
     name: str = Field(max_length=100)
     phone_number: str | None = None
@@ -19,6 +19,7 @@ class ConsumerBase(BaseModel):
     active_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
     )
+    meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
 
 
 class ConsumerCreate(SQLModel):
@@ -56,7 +57,3 @@ class ConsumerQuery(BaseModel):
     email: EmailStr | None = None
     phone_number: str | None = None
     address: str | None = None
-
-
-class Consumers(ConsumerBase, table=True):
-    meta_data: dict[str, Any] = Field(default_factory=dict, sa_type=JSONB)

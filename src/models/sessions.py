@@ -1,15 +1,20 @@
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from pydantic.config import ConfigDict
 from sqlalchemy import Column, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 
 from helpers.model import BaseModel
+
+if TYPE_CHECKING:
+    from models.forms import FormResponses
 
 
 class SessionStatus(str, Enum):
@@ -19,26 +24,32 @@ class SessionStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class SessionBase(BaseModel):
+class Sessions(BaseModel, table=True):
     consumer_id: UUID = Field(foreign_key="consumers.id")
     status: SessionStatus = Field(
         default=SessionStatus.PENDING,
         sa_column=Column(SAEnum(SessionStatus)),
     )
-    transcription: dict[str, Any] = Field(default_factory=dict, sa_type=JSONB)
-
+    transcription: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
     initiated_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
     )
     concluded_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
     )
-    tags: list[str] = Field(
+    tags: list[str] | None = Field(
+        default_factory=list,
+        sa_column=Column(JSONB),
+    )
+    files: list[dict] | None = Field(
         default_factory=list,
         sa_column=Column(JSONB),
     )
     feedback: str | None = None
     rating: float | None = None
+    meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
+    # Use string-based forward reference + proper back_populates name
+    form_responses: list[FormResponses] = Relationship(back_populates="session")
 
 
 class SessionCreate(SQLModel):
@@ -47,6 +58,8 @@ class SessionCreate(SQLModel):
     transcription: dict[str, Any]
     initiated_at: datetime
     concluded_at: datetime
+    files: list[dict] | None = None
+    tags: list[str] | None = None
     feedback: str | None = None
     rating: float | None = None
 
@@ -57,6 +70,10 @@ class SessionRead(SQLModel):
     id: UUID
     consumer_id: UUID
     status: SessionStatus
+    files: list[dict] | None = None
+    tags: list[str] | None = None
+    feedback: str | None = None
+    rating: float | None = None
     transcription: dict[str, Any]
     initiated_at: datetime
     concluded_at: datetime
@@ -80,7 +97,3 @@ class SessionQuery(BaseModel):
     status: SessionStatus | None = None
     initiated_at: datetime | None = None
     concluded_at: datetime | None = None
-
-
-class Sessions(SessionBase, table=True):
-    meta_data: dict[str, Any] = Field(default_factory=dict, sa_type=JSONB)

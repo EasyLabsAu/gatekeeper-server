@@ -1,11 +1,17 @@
+from datetime import datetime
 from enum import Enum
+from typing import Any
 from uuid import UUID
 
+from pydantic.config import ConfigDict
 from sqlalchemy import Column, Text
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql.json import JSONB
 from sqlmodel import Field, Relationship
+from sqlmodel.main import SQLModel
 
 from helpers.model import BaseModel
+from models.sessions import Sessions
 
 
 # Enum to define different types of form fields that a user can interact with
@@ -23,16 +29,53 @@ class Forms(BaseModel, table=True):
     __tablename__ = "forms"
 
     name: str  # Title or name of the form
+    type: str | None = None  # Type of the form (e.g., "feedback", "survey", etc.)
     description: str | None = None  # Optional description of the form
-    created_by: UUID = Field(
-        foreign_key="providers.id"
-    )  # Reference to the user who created the form
+    created_by: UUID = Field(foreign_key="providers.id")
+    meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
 
     # One form can have multiple sections
     sections: list["FormSections"] = Relationship(back_populates="form")
 
     # One form can receive many user responses
     responses: list["FormResponses"] = Relationship(back_populates="form")
+
+
+class FormCreate(SQLModel):
+    name: str
+    description: str | None = None
+    type: str | None = None
+    created_by: UUID
+
+
+class FormRead(SQLModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    description: str | None = None
+    type: str | None = None
+    created_by: UUID
+    meta_data: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime | None
+
+
+class FormUpdate(SQLModel):
+    name: str | None = None
+    description: str | None = None
+    type: str | None = None
+    created_by: UUID | None = None
+    concluded_at: datetime | None = None
+    meta_data: dict[str, Any] | None = None
+    active_at: datetime | None = None
+
+
+class FormQuery(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    created_by: UUID | None = None
+    type: str | None = None
 
 
 # A form is divided into one or more sections
@@ -79,7 +122,9 @@ class FormResponses(BaseModel, table=True):
     __tablename__ = "form_responses"
 
     form_id: UUID = Field(foreign_key="forms.id")  # Reference to the original form
-    user_id: UUID  # User who submitted the form
+    session_id: UUID = Field(
+        foreign_key="sessions.id"
+    )  # Reference to the session this response belongs to
     submitted_at: str | None = None
 
     # Back-reference to the form that was answered
@@ -89,6 +134,8 @@ class FormResponses(BaseModel, table=True):
     section_responses: list["FormSectionResponses"] = Relationship(
         back_populates="form_response"
     )
+
+    session: "Sessions" = Relationship(back_populates="form_responses")
 
 
 # Stores user's answers for a specific section of a form
