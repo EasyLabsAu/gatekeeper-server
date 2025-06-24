@@ -5,7 +5,6 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from pydantic.config import ConfigDict
 from sqlalchemy import Column, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
@@ -65,8 +64,6 @@ class SessionCreate(SQLModel):
 
 
 class SessionRead(SQLModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     consumer_id: UUID
     status: SessionStatus

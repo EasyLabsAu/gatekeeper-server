@@ -3,7 +3,6 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic.config import ConfigDict
 from sqlalchemy import Column, Text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql.json import JSONB
@@ -26,8 +25,6 @@ class FormFieldTypes(str, Enum):
 
 # Main form container model
 class Forms(BaseModel, table=True):
-    __tablename__ = "forms"
-
     name: str  # Title or name of the form
     type: str | None = None  # Type of the form (e.g., "feedback", "survey", etc.)
     description: str | None = None  # Optional description of the form
@@ -49,8 +46,6 @@ class FormCreate(SQLModel):
 
 
 class FormRead(SQLModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     name: str
     description: str | None = None
@@ -79,9 +74,7 @@ class FormQuery(BaseModel):
 
 
 # A form is divided into one or more sections
-class FormSections(BaseModel, table=True):
-    __tablename__ = "form_sections"
-
+class FormSections(BaseModel, table=True, table_name="form_sections"):
     form_id: UUID = Field(foreign_key="forms.id")  # Reference to the parent form
     title: str  # Section title
     description: str | None = None  # Optional section description
@@ -95,9 +88,7 @@ class FormSections(BaseModel, table=True):
 
 
 # Each section contains one or more questions
-class FormQuestions(BaseModel, table=True):
-    __tablename__ = "form_questions"
-
+class FormQuestions(BaseModel, table=True, table_name="form_questions"):
     section_id: UUID = Field(
         foreign_key="form_sections.id"
     )  # Reference to the parent section
@@ -118,9 +109,7 @@ class FormQuestions(BaseModel, table=True):
 
 
 # Stores one user's overall submission of a form
-class FormResponses(BaseModel, table=True):
-    __tablename__ = "form_responses"
-
+class FormResponses(BaseModel, table=True, table_name="form_responses"):
     form_id: UUID = Field(foreign_key="forms.id")  # Reference to the original form
     session_id: UUID = Field(
         foreign_key="sessions.id"
@@ -139,9 +128,7 @@ class FormResponses(BaseModel, table=True):
 
 
 # Stores user's answers for a specific section of a form
-class FormSectionResponses(BaseModel, table=True):
-    __tablename__ = "form_section_responses"
-
+class FormSectionResponses(BaseModel, table=True, table_name="form_section_responses"):
     response_id: UUID = Field(
         foreign_key="form_responses.id"
     )  # Reference to overall form response
@@ -159,9 +146,9 @@ class FormSectionResponses(BaseModel, table=True):
 
 
 # Stores user's answer to a specific question in a section
-class FormQuestionResponses(BaseModel, table=True):
-    __tablename__ = "form_question_responses"
-
+class FormQuestionResponses(
+    BaseModel, table=True, table_name="form_question_responses"
+):
     section_response_id: UUID = Field(
         foreign_key="form_section_responses.id"
     )  # Which section this answer belongs to

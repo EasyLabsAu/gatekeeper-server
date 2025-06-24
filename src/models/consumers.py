@@ -3,7 +3,6 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import EmailStr
-from pydantic.config import ConfigDict
 from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -30,8 +29,6 @@ class ConsumerCreate(SQLModel):
 
 
 class ConsumerRead(SQLModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     email: EmailStr
     name: str
