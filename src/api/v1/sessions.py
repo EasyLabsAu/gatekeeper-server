@@ -10,6 +10,7 @@ from models.sessions import (
     SessionCreate,
     SessionQuery,
     SessionRead,
+    SessionStatus,
     SessionUpdate,
 )
 from services.sessions import SessionService
@@ -31,7 +32,7 @@ async def create_session(payload: SessionCreate):
 )
 async def list_sessions(
     _: Annotated[dict[str, Any], Depends(require_auth)],
-    status: str | None = None,
+    status: SessionStatus | None = None,
     tags: list[str] | None = None,
     skip: int = 0,
     limit: int = 20,
