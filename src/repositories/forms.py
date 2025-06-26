@@ -4,8 +4,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from helpers.model import APIError, APIResponse
 from helpers.repository import BaseRepository
-from helpers.utils import APIError, APIResponse
 from models.forms import (
     FormCreate,
     FormQuery,
@@ -20,7 +20,7 @@ from models.forms import (
 )
 
 
-class FormService(BaseRepository):
+class FormRepository(BaseRepository):
     async def create(self, payload: FormCreate) -> APIResponse[FormRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
@@ -53,7 +53,7 @@ class FormService(BaseRepository):
             if query.type:
                 filters.append(getattr(Forms, "type") == query.type)  # noqa: B009
             if exclude_deleted and hasattr(Forms, "is_deleted"):
-                filters.append(getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
+                filters.append(getattr(Forms, "is_deleted") is False)  # noqa: B009, E712
             statement = select(Forms)
             if filters:
                 statement = statement.where(*filters)
@@ -75,7 +75,7 @@ class FormService(BaseRepository):
         try:
             statement = select(Forms).where(Forms.id == id)
             if not include_deleted and hasattr(Forms, "is_deleted"):
-                statement = statement.where(getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
+                statement = statement.where(getattr(Forms, "is_deleted") is False)  # noqa: B009, E712
             result = await db.execute(statement)
             form = result.scalar_one_or_none()
             if not form:
@@ -92,7 +92,7 @@ class FormService(BaseRepository):
         try:
             statement = select(Forms).where(
                 Forms.id == id,
-                (getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
+                (getattr(Forms, "is_deleted") is False)  # noqa: B009, E712
                 if hasattr(Forms, "is_deleted")
                 else True,
             )
@@ -119,7 +119,7 @@ class FormService(BaseRepository):
         try:
             statement = select(Forms).where(
                 Forms.id == id,
-                (getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
+                (getattr(Forms, "is_deleted") is False)  # noqa: B009, E712
                 if hasattr(Forms, "is_deleted")
                 else True,
             )
@@ -140,7 +140,7 @@ class FormService(BaseRepository):
             await self.close_database_session()
 
 
-class FormSectionService(BaseRepository):
+class FormSectionRepository(BaseRepository):
     async def create(self, payload: dict) -> APIResponse | None:
         db: AsyncSession = await self.get_database_session()
         try:
@@ -221,7 +221,7 @@ class FormSectionService(BaseRepository):
             await self.close_database_session()
 
 
-class FormQuestionService(BaseRepository):
+class FormQuestionRepository(BaseRepository):
     async def create(self, payload: dict) -> APIResponse | None:
         db: AsyncSession = await self.get_database_session()
         try:
@@ -304,7 +304,7 @@ class FormQuestionService(BaseRepository):
             await self.close_database_session()
 
 
-class FormResponseService(BaseRepository):
+class FormResponseRepository(BaseRepository):
     async def create(self, payload: dict) -> APIResponse | None:
         db: AsyncSession = await self.get_database_session()
         try:
@@ -385,7 +385,7 @@ class FormResponseService(BaseRepository):
             await self.close_database_session()
 
 
-class FormSectionResponseService(BaseRepository):
+class FormSectionResponseRepository(BaseRepository):
     async def create(self, payload: dict) -> APIResponse | None:
         db: AsyncSession = await self.get_database_session()
         try:
@@ -476,7 +476,7 @@ class FormSectionResponseService(BaseRepository):
             await self.close_database_session()
 
 
-class FormQuestionResponseService(BaseRepository):
+class FormQuestionResponseRepository(BaseRepository):
     async def create(self, payload: dict) -> APIResponse | None:
         db: AsyncSession = await self.get_database_session()
         try:

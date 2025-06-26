@@ -25,7 +25,7 @@ A production-ready FastAPI project template with best practices for rapid develo
 │   ├── helpers/         # Helper utilities
 │   ├── models/          # Database models
 │   ├── workers/         # Background tasks
-│   └── services/        # Business logic
+│   └── repositorys/        # Business logic
 └── tests/               # Test files
 ```
 

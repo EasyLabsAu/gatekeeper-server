@@ -4,8 +4,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from helpers.model import APIError, APIResponse
 from helpers.repository import BaseRepository
-from helpers.utils import APIError, APIResponse
 from models.sessions import (
     SessionCreate,
     SessionQuery,
@@ -15,7 +15,7 @@ from models.sessions import (
 )
 
 
-class SessionService(BaseRepository):
+class SessionRepository(BaseRepository):
     async def create(self, payload: SessionCreate) -> APIResponse[SessionRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
@@ -23,7 +23,7 @@ class SessionService(BaseRepository):
             db.add(session)
             await db.commit()
             await db.refresh(session)
-            data = SessionRead.model_validate(session).model_dump()
+            data = SessionRead.model_validate(session)
             return APIResponse[SessionRead](data=data)
         except IntegrityError as e:
             await db.rollback()
@@ -37,7 +37,7 @@ class SessionService(BaseRepository):
         skip: int = 0,
         limit: int = 20,
         exclude_deleted: bool = True,
-    ) -> APIResponse[SessionRead] | None:
+    ) -> APIResponse[list[SessionRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             filters = []
@@ -46,7 +46,7 @@ class SessionService(BaseRepository):
             if query.status:
                 filters.append(Sessions.status == query.status)
             if exclude_deleted and hasattr(Sessions, "is_deleted"):
-                filters.append(Sessions.is_deleted == False)  # noqa: E712
+                filters.append(Sessions.is_deleted is False)  # noqa: E712
 
             statement = select(Sessions)
             if filters:
@@ -62,8 +62,8 @@ class SessionService(BaseRepository):
                     if s.tags and any(tag in s.tags for tag in query.tags)
                 ]
             data = [SessionRead.model_validate(session) for session in sessions]
-            return APIResponse[SessionRead](
-                data=[item.model_dump() for item in data],
+            return APIResponse[list[SessionRead]](
+                data=data,
                 meta={"skip": skip, "limit": limit, "count": len(data)},
             )
         finally:
@@ -76,12 +76,12 @@ class SessionService(BaseRepository):
         try:
             statement = select(Sessions).where(Sessions.id == id)
             if not include_deleted and hasattr(Sessions, "is_deleted"):
-                statement = statement.where(Sessions.is_deleted == False)  # noqa: E712
+                statement = statement.where(Sessions.is_deleted is False)  # noqa: E712
             result = await db.execute(statement)
             session = result.scalar_one_or_none()
             if not session:
                 raise APIError(404, "Session not found")
-            data = SessionRead.model_validate(session).model_dump()
+            data = SessionRead.model_validate(session)
             return APIResponse[SessionRead](data=data)
         finally:
             await self.close_database_session()
@@ -93,7 +93,7 @@ class SessionService(BaseRepository):
         try:
             statement = select(Sessions).where(
                 Sessions.id == id,
-                (Sessions.is_deleted == False)  # noqa: E712
+                (Sessions.is_deleted is False)  # noqa: E712
                 if hasattr(Sessions, "is_deleted")
                 else True,
             )
@@ -107,7 +107,7 @@ class SessionService(BaseRepository):
             db.add(session)
             await db.commit()
             await db.refresh(session)
-            data = SessionRead.model_validate(session).model_dump()
+            data = SessionRead.model_validate(session)
             return APIResponse[SessionRead](data=data)
         except IntegrityError as e:
             await db.rollback()
@@ -120,7 +120,7 @@ class SessionService(BaseRepository):
         try:
             statement = select(Sessions).where(
                 Sessions.id == id,
-                (Sessions.is_deleted == False)  # noqa: E712
+                (Sessions.is_deleted is False)  # noqa: E712
                 if hasattr(Sessions, "is_deleted")
                 else True,
             )
@@ -129,7 +129,7 @@ class SessionService(BaseRepository):
             if not session:
                 raise APIError(404, "Session not found")
             if hasattr(session, "soft_delete"):
-                Sessions(session).soft_delete()
+                session.soft_delete()
             elif hasattr(session, "is_deleted"):
                 session.is_deleted = True
             else:

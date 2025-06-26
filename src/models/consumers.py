@@ -1,13 +1,17 @@
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from pydantic import EmailStr
 from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Field, SQLModel
+from sqlalchemy.orm import Mapped
+from sqlmodel import Field, Relationship, SQLModel
 
 from helpers.model import BaseModel
+
+if TYPE_CHECKING:
+    from models.sessions import Sessions
 
 
 class Consumers(BaseModel, table=True):
@@ -19,6 +23,9 @@ class Consumers(BaseModel, table=True):
         default=None, sa_column=Column(DateTime(timezone=True))
     )
     meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
+
+    # One consumer can have multiple sessions
+    sessions: Mapped[list["Sessions"]] = Relationship(back_populates="consumer")
 
 
 class ConsumerCreate(SQLModel):

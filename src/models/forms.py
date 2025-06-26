@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import Column, Text
@@ -10,7 +10,10 @@ from sqlmodel import Field, Relationship
 from sqlmodel.main import SQLModel
 
 from helpers.model import BaseModel
-from models.sessions import Sessions
+
+if TYPE_CHECKING:
+    from models.providers import Providers
+    from models.sessions import Sessions
 
 
 # Enum to define different types of form fields that a user can interact with
@@ -36,6 +39,9 @@ class Forms(BaseModel, table=True):
 
     # One form can receive many user responses
     responses: list["FormResponses"] = Relationship(back_populates="form")
+
+    # Back-reference to the provider who created the form
+    provider: "Providers" = Relationship(back_populates="forms")
 
 
 class FormCreate(SQLModel):
@@ -81,10 +87,13 @@ class FormSections(BaseModel, table=True, table_name="form_sections"):
     order: int  # Position of the section in the form
 
     # Back-reference to the parent form
-    form: Forms = Relationship(back_populates="sections")
+    form: "Forms" = Relationship(back_populates="sections")
 
     # One section can have multiple questions
     questions: list["FormQuestions"] = Relationship(back_populates="section")
+
+    # One section can have multiple responses from users
+    responses: list["FormSectionResponses"] = Relationship(back_populates="section")
 
 
 # Each section contains one or more questions
@@ -105,7 +114,10 @@ class FormQuestions(BaseModel, table=True, table_name="form_questions"):
     )
 
     # Back-reference to the parent section
-    section: FormSections = Relationship(back_populates="questions")
+    section: "FormSections" = Relationship(back_populates="questions")
+
+    # One question can have multiple responses from users
+    responses: list["FormQuestionResponses"] = Relationship(back_populates="question")
 
 
 # Stores one user's overall submission of a form
@@ -117,7 +129,7 @@ class FormResponses(BaseModel, table=True, table_name="form_responses"):
     submitted_at: str | None = None
 
     # Back-reference to the form that was answered
-    form: Forms = Relationship(back_populates="responses")
+    form: "Forms" = Relationship(back_populates="responses")
 
     # One form response consists of multiple section responses
     section_responses: list["FormSectionResponses"] = Relationship(
@@ -133,11 +145,14 @@ class FormSectionResponses(BaseModel, table=True, table_name="form_section_respo
         foreign_key="form_responses.id"
     )  # Reference to overall form response
     section_id: UUID = Field(
-        foreign_key="form_sections.id"
+        foreign_key="form_sections.id"  # This now correctly references the table name
     )  # Reference to the section answered
 
     # Back-reference to the overall form response
-    form_response: FormResponses = Relationship(back_populates="section_responses")
+    form_response: "FormResponses" = Relationship(back_populates="section_responses")
+
+    # Back-reference to the section that was answered
+    section: "FormSections" = Relationship(back_populates="responses")
 
     # One section response includes multiple question responses
     question_responses: list["FormQuestionResponses"] = Relationship(
@@ -153,7 +168,7 @@ class FormQuestionResponses(
         foreign_key="form_section_responses.id"
     )  # Which section this answer belongs to
     question_id: UUID = Field(
-        foreign_key="form_questions.id"
+        foreign_key="form_questions.id"  # This now correctly references the table name
     )  # Which question this is an answer to
 
     # User's actual answer (can be string, number, datetime, etc. — stored as JSON)
@@ -161,6 +176,9 @@ class FormQuestionResponses(
     # Timestamp when the answer was submitted
     submitted_at: str | None = None
     # Back-reference to the parent section response
-    section_response: FormSectionResponses = Relationship(
+    section_response: "FormSectionResponses" = Relationship(
         back_populates="question_responses"
     )
+
+    # Back-reference to the question that was answered
+    question: "FormQuestions" = Relationship(back_populates="responses")

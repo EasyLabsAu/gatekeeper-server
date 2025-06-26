@@ -262,7 +262,7 @@ files = [
 name = "cloudpathlib"
 version = "0.21.1"
 requires_python = ">=3.9"
-summary = "pathlib-style classes for cloud storage services."
+summary = "pathlib-style classes for cloud storage repositorys."
 groups = ["default"]
 dependencies = [
     "typing-extensions>4; python_version < \"3.11\"",

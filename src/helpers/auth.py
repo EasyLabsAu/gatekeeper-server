@@ -12,7 +12,7 @@ from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from passlib.context import CryptContext
 
 from core.config import settings
-from helpers.utils import APIError
+from helpers.model import APIError
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 1
@@ -22,6 +22,11 @@ REFRESH_TOKEN_MAX_DAYS = 7
 security = HTTPBearer(auto_error=False)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 token_blacklist: set[str] = set()
+
+
+def create_one_time_password() -> str:
+    otp = secrets.randbelow(900000) + 100000
+    return str(otp)
 
 
 def hash_password(password: str) -> str:
@@ -137,26 +142,16 @@ def get_public_paths(app: FastAPI) -> set[str]:
     return public_paths
 
 
-def public_route(route_handler):
-    route_handler._is_public = True
-    return route_handler
-
-
 def require_auth(token: HTTPAuthorizationCredentials = Security(security)):
     if not token or not token.credentials:
-        return APIError(401, "Missing Authorization token")
+        raise APIError(401, "Missing Authorization token")
 
     raw_token = token.credentials
 
     if raw_token in token_blacklist:
-        return APIError(401, "Token has been revoked or reused")
+        raise APIError(401, "Token has been revoked or reused")
 
     try:
         return verify_access_token(raw_token)
     except Exception as e:
-        return APIError(401, f"Unauthorized: {str(e)}")
-
-
-def create_one_time_password() -> str:
-    otp = secrets.randbelow(900000) + 100000
-    return str(otp)
+        raise APIError(401, f"Unauthorized: {str(e)}")

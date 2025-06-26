@@ -74,7 +74,7 @@ intents_data = {
         ],
         "responses": [
             "We offer a wide range of technology solutions. Our main products include: \n"
-            "- AI-Powered Analytics Suite\n- Cloud Infrastructure Services\n- Cybersecurity Solutions\n",
+            "- AI-Powered Analytics Suite\n- Cloud Infrastructure Repositorys\n- Cybersecurity Solutions\n",
             "Our product portfolio focuses on helping businesses increase efficiency and security. \n"
             "Would you like details about a specific product?",
         ],
@@ -222,7 +222,7 @@ class ChatEngine:
         business_keywords = {
             "product_info": [
                 "product",
-                "service",
+                "repository",
                 "offer",
                 "sell",
                 "buy",

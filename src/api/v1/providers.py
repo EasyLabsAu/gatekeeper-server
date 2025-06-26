@@ -3,10 +3,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter
 from fastapi.params import Depends
 
-from helpers.auth import public_route, require_auth
+from helpers.auth import require_auth
 from helpers.constants import PROVIDER_CREATED_EVENT
 from helpers.events import events
-from helpers.utils import APIResponse
+from helpers.model import APIResponse
 from models.providers import (
     ProviderAuthRead,
     ProviderCreate,
@@ -19,10 +19,10 @@ from models.providers import (
     ProviderUpdate,
     ProviderValidate,
 )
-from services.providers import ProviderService
+from repositories.providers import ProviderRepository
 
 provider_router: APIRouter = APIRouter(prefix="/api/v1/providers", tags=["providers"])
-provider_service: ProviderService = ProviderService()
+provider_repository: ProviderRepository = ProviderRepository()
 
 
 @provider_router.get(
@@ -31,7 +31,7 @@ provider_service: ProviderService = ProviderService()
     summary="Get current provider info",
 )
 async def get(auth: Annotated[dict[str, Any], Depends(require_auth)]):
-    return await provider_service.get(auth["sub"])
+    return await provider_repository.get(auth["sub"])
 
 
 @provider_router.patch(
@@ -40,7 +40,7 @@ async def get(auth: Annotated[dict[str, Any], Depends(require_auth)]):
 async def update(
     payload: ProviderUpdate, auth: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await provider_service.update(auth["sub"], payload)
+    return await provider_repository.update(auth["sub"], payload)
 
 
 @provider_router.post(
@@ -48,9 +48,8 @@ async def update(
     response_model=APIResponse[ProviderRead],
     summary="Create a new provider account",
 )
-@public_route
 async def create(payload: ProviderCreate):
-    result = await provider_service.create(payload)
+    result = await provider_repository.create(payload)
     if result:
         await events.emit(PROVIDER_CREATED_EVENT, payload.email)
     return result
@@ -61,9 +60,8 @@ async def create(payload: ProviderCreate):
     response_model=APIResponse[ProviderAuthRead],
     summary="Validate provider credentials",
 )
-@public_route
 async def validate(payload: ProviderValidate):
-    return await provider_service.validate(payload)
+    return await provider_repository.validate(payload)
 
 
 @provider_router.post(
@@ -72,7 +70,7 @@ async def validate(payload: ProviderValidate):
     summary="Revalidate a session",
 )
 async def revalidate(payload: ProviderRevalidate):
-    return await provider_service.revalidate(payload)
+    return await provider_repository.revalidate(payload)
 
 
 @provider_router.post(
@@ -81,15 +79,14 @@ async def revalidate(payload: ProviderRevalidate):
     summary="Invalidate a session",
 )
 async def invalidate(payload: ProviderInvalidate):
-    return await provider_service.invalidate(payload)
+    return await provider_repository.invalidate(payload)
 
 
 @provider_router.post(
     "/account/manage/start-email-verification", response_model=ProviderManageRead
 )
-@public_route
 async def manage_start_email_verification(payload: ProviderManage):
-    return await provider_service.manage(
+    return await provider_repository.manage(
         ProviderManageAction.START_EMAIL_VERIFICATION, payload
     )
 
@@ -97,9 +94,8 @@ async def manage_start_email_verification(payload: ProviderManage):
 @provider_router.post(
     "/account/manage/finish-email-verification", response_model=ProviderManageRead
 )
-@public_route
 async def manage_finish_email_verification(payload: ProviderManage):
-    return await provider_service.manage(
+    return await provider_repository.manage(
         ProviderManageAction.FINISH_EMAIL_VERIFICATION, payload
     )
 
@@ -107,9 +103,8 @@ async def manage_finish_email_verification(payload: ProviderManage):
 @provider_router.post(
     "/account/manage/start-email-authentication", response_model=ProviderManageRead
 )
-@public_route
 async def manage_start_email_authentication(payload: ProviderManage):
-    return await provider_service.manage(
+    return await provider_repository.manage(
         ProviderManageAction.START_EMAIL_AUTHENTICATION, payload
     )
 
@@ -117,9 +112,8 @@ async def manage_start_email_authentication(payload: ProviderManage):
 @provider_router.post(
     "/account/manage/finish-email-authentication", response_model=ProviderManageRead
 )
-@public_route
 async def manage_finish_email_authentication(payload: ProviderManage):
-    return await provider_service.manage(
+    return await provider_repository.manage(
         ProviderManageAction.FINISH_EMAIL_AUTHENTICATION, payload
     )
 
@@ -127,9 +121,8 @@ async def manage_finish_email_authentication(payload: ProviderManage):
 @provider_router.post(
     "/account/manage/start-password-reset", response_model=ProviderManageRead
 )
-@public_route
 async def manage_start_password_reset(payload: ProviderManage):
-    return await provider_service.manage(
+    return await provider_repository.manage(
         ProviderManageAction.START_PASSWORD_RESET, payload
     )
 
@@ -137,9 +130,8 @@ async def manage_start_password_reset(payload: ProviderManage):
 @provider_router.post(
     "/account/manage/finish-password-reset", response_model=ProviderManageRead
 )
-@public_route
 async def manage_finish_password_reset(payload: ProviderManage):
-    return await provider_service.manage(
+    return await provider_repository.manage(
         ProviderManageAction.FINISH_PASSWORD_RESET, payload
     )
 
@@ -148,7 +140,7 @@ async def manage_finish_password_reset(payload: ProviderManage):
 async def manage_update_email(
     payload: ProviderManage,
 ):
-    return await provider_service.manage(ProviderManageAction.UPDATE_EMAIL, payload)
+    return await provider_repository.manage(ProviderManageAction.UPDATE_EMAIL, payload)
 
 
 @provider_router.post(
@@ -157,4 +149,6 @@ async def manage_update_email(
 async def manage_update_password(
     payload: ProviderManage,
 ):
-    return await provider_service.manage(ProviderManageAction.UPDATE_PASSWORD, payload)
+    return await provider_repository.manage(
+        ProviderManageAction.UPDATE_PASSWORD, payload
+    )

@@ -1,14 +1,17 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from pydantic import EmailStr
 from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 
 from helpers.model import BaseModel
+
+if TYPE_CHECKING:
+    from models.forms import Forms  # Avoid circular import by using TYPE_CHECKING
 
 
 class ProviderAccess(str, Enum):
@@ -48,6 +51,9 @@ class Providers(BaseModel, table=True):
         default=None, sa_column=Column(DateTime(timezone=True))
     )
     meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
+
+    # One provider can create multiple forms
+    forms: list["Forms"] = Relationship(back_populates="provider")
 
 
 class ProviderCreate(SQLModel):

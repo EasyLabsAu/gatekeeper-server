@@ -4,39 +4,41 @@ from uuid import UUID
 from fastapi import APIRouter
 from fastapi.params import Depends
 
-from helpers.auth import public_route, require_auth
-from helpers.utils import APIResponse
+from helpers.auth import require_auth
+from helpers.model import APIResponse
 from models.forms import (
     FormCreate,
     FormQuery,
     FormRead,
     FormUpdate,
 )
-from services.forms import (
-    FormQuestionResponseService,
-    FormQuestionService,
-    FormResponseService,
-    FormSectionResponseService,
-    FormSectionService,
-    FormService,
+from repositories.forms import (
+    FormQuestionResponseRepository,
+    FormQuestionRepository,
+    FormResponseRepository,
+    FormSectionResponseRepository,
+    FormSectionRepository,
+    FormRepository,
 )
 
 form_router: APIRouter = APIRouter(prefix="/api/v1/forms", tags=["forms"])
-form_service: FormService = FormService()
-section_service: FormSectionService = FormSectionService()
-question_service: FormQuestionService = FormQuestionService()
-response_service: FormResponseService = FormResponseService()
-section_response_service: FormSectionResponseService = FormSectionResponseService()
-question_response_service: FormQuestionResponseService = FormQuestionResponseService()
+form_repository: FormRepository = FormRepository()
+section_repository: FormSectionRepository = FormSectionRepository()
+question_repository: FormQuestionRepository = FormQuestionRepository()
+response_repository: FormResponseRepository = FormResponseRepository()
+section_response_repository: FormSectionResponseRepository = (
+    FormSectionResponseRepository()
+)
+question_response_repository: FormQuestionResponseRepository = (
+    FormQuestionResponseRepository()
+)
 
 
-# --- Forms CRUD ---
 @form_router.post(
     "/", response_model=APIResponse[FormRead], summary="Create a new form"
 )
-@public_route
 async def create_form(payload: FormCreate):
-    return await form_service.create(payload)
+    return await form_repository.create(payload)
 
 
 @form_router.get("/", response_model=APIResponse[list[FormRead]], summary="List forms")
@@ -52,7 +54,7 @@ async def list_forms(
     query = FormQuery(
         name=name, description=description, created_by=created_by, type=type
     )
-    return await form_service.find(query, skip=skip, limit=limit)
+    return await form_repository.find(query, skip=skip, limit=limit)
 
 
 @form_router.get(
@@ -61,7 +63,7 @@ async def list_forms(
     summary="Get form by ID",
 )
 async def get_form(form_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]):
-    return await form_service.get(form_id)
+    return await form_repository.get(form_id)
 
 
 @form_router.patch(
@@ -74,7 +76,7 @@ async def update_form(
     payload: FormUpdate,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    return await form_service.update(form_id, payload)
+    return await form_repository.update(form_id, payload)
 
 
 @form_router.delete(
@@ -83,7 +85,7 @@ async def update_form(
 async def delete_form(
     form_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await form_service.delete(form_id)
+    return await form_repository.delete(form_id)
 
 
 # --- Form Sections CRUD ---
@@ -98,7 +100,7 @@ async def create_section(
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
     payload["form_id"] = str(form_id)
-    return await section_service.create(payload)
+    return await section_repository.create(payload)
 
 
 @form_router.get(
@@ -112,7 +114,7 @@ async def list_sections(
     skip: int = 0,
     limit: int = 20,
 ):
-    return await section_service.find(form_id, skip=skip, limit=limit)
+    return await section_repository.find(form_id, skip=skip, limit=limit)
 
 
 @form_router.get(
@@ -121,7 +123,7 @@ async def list_sections(
 async def get_section(
     section_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await section_service.get(section_id)
+    return await section_repository.get(section_id)
 
 
 @form_router.patch(
@@ -130,7 +132,7 @@ async def get_section(
 async def update_section(
     section_id: UUID, payload: dict, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await section_service.update(section_id, payload)
+    return await section_repository.update(section_id, payload)
 
 
 @form_router.delete(
@@ -139,7 +141,7 @@ async def update_section(
 async def delete_section(
     section_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await section_service.delete(section_id)
+    return await section_repository.delete(section_id)
 
 
 # --- Form Questions CRUD ---
@@ -152,7 +154,7 @@ async def create_question(
     section_id: UUID, payload: dict, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
     payload["section_id"] = str(section_id)
-    return await question_service.create(payload)
+    return await question_repository.create(payload)
 
 
 @form_router.get(
@@ -166,7 +168,7 @@ async def list_questions(
     skip: int = 0,
     limit: int = 20,
 ):
-    return await question_service.find(section_id, skip=skip, limit=limit)
+    return await question_repository.find(section_id, skip=skip, limit=limit)
 
 
 @form_router.get(
@@ -175,7 +177,7 @@ async def list_questions(
 async def get_question(
     question_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await question_service.get(question_id)
+    return await question_repository.get(question_id)
 
 
 @form_router.patch(
@@ -188,7 +190,7 @@ async def update_question(
     payload: dict,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    return await question_service.update(question_id, payload)
+    return await question_repository.update(question_id, payload)
 
 
 @form_router.delete(
@@ -199,7 +201,7 @@ async def update_question(
 async def delete_question(
     question_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await question_service.delete(question_id)
+    return await question_repository.delete(question_id)
 
 
 # --- Form Responses CRUD ---
@@ -212,7 +214,7 @@ async def create_response(
     form_id: UUID, payload: dict, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
     payload["form_id"] = str(form_id)
-    return await response_service.create(payload)
+    return await response_repository.create(payload)
 
 
 @form_router.get(
@@ -226,7 +228,7 @@ async def list_responses(
     skip: int = 0,
     limit: int = 20,
 ):
-    return await response_service.find(form_id, skip=skip, limit=limit)
+    return await response_repository.find(form_id, skip=skip, limit=limit)
 
 
 @form_router.get(
@@ -235,7 +237,7 @@ async def list_responses(
 async def get_response(
     response_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await response_service.get(response_id)
+    return await response_repository.get(response_id)
 
 
 @form_router.patch(
@@ -248,7 +250,7 @@ async def update_response(
     payload: dict,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    return await response_service.update(response_id, payload)
+    return await response_repository.update(response_id, payload)
 
 
 @form_router.delete(
@@ -259,7 +261,7 @@ async def update_response(
 async def delete_response(
     response_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await response_service.delete(response_id)
+    return await response_repository.delete(response_id)
 
 
 # --- Form Section Responses CRUD ---
@@ -274,7 +276,7 @@ async def create_section_response(
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
     payload["response_id"] = str(response_id)
-    return await section_response_service.create(payload)
+    return await section_response_repository.create(payload)
 
 
 @form_router.get(
@@ -288,7 +290,7 @@ async def list_section_responses(
     skip: int = 0,
     limit: int = 20,
 ):
-    return await section_response_service.find(response_id, skip=skip, limit=limit)
+    return await section_response_repository.find(response_id, skip=skip, limit=limit)
 
 
 @form_router.get(
@@ -299,7 +301,7 @@ async def list_section_responses(
 async def get_section_response(
     section_response_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await section_response_service.get(section_response_id)
+    return await section_response_repository.get(section_response_id)
 
 
 @form_router.patch(
@@ -312,7 +314,7 @@ async def update_section_response(
     payload: dict,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    return await section_response_service.update(section_response_id, payload)
+    return await section_response_repository.update(section_response_id, payload)
 
 
 @form_router.delete(
@@ -323,7 +325,7 @@ async def update_section_response(
 async def delete_section_response(
     section_response_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await section_response_service.delete(section_response_id)
+    return await section_response_repository.delete(section_response_id)
 
 
 # --- Form Question Responses CRUD ---
@@ -338,7 +340,7 @@ async def create_question_response(
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
     payload["section_response_id"] = str(section_response_id)
-    return await question_response_service.create(payload)
+    return await question_response_repository.create(payload)
 
 
 @form_router.get(
@@ -352,7 +354,7 @@ async def list_question_responses(
     skip: int = 0,
     limit: int = 20,
 ):
-    return await question_response_service.find(
+    return await question_response_repository.find(
         section_response_id, skip=skip, limit=limit
     )
 
@@ -365,7 +367,7 @@ async def list_question_responses(
 async def get_question_response(
     question_response_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await question_response_service.get(question_response_id)
+    return await question_response_repository.get(question_response_id)
 
 
 @form_router.patch(
@@ -378,7 +380,7 @@ async def update_question_response(
     payload: dict,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    return await question_response_service.update(question_response_id, payload)
+    return await question_response_repository.update(question_response_id, payload)
 
 
 @form_router.delete(
@@ -389,4 +391,4 @@ async def update_question_response(
 async def delete_question_response(
     question_response_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await question_response_service.delete(question_response_id)
+    return await question_response_repository.delete(question_response_id)

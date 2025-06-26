@@ -3,26 +3,25 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from helpers.auth import public_route, require_auth
-from helpers.utils import APIResponse
+from helpers.auth import require_auth
+from helpers.model import APIResponse
 from models.consumers import (
     ConsumerCreate,
     ConsumerQuery,
     ConsumerRead,
     ConsumerUpdate,
 )
-from services.consumers import ConsumerService
+from repositories.consumers import ConsumerRepository
 
 consumer_router: APIRouter = APIRouter(prefix="/api/v1/consumers", tags=["consumers"])
-consumer_service: ConsumerService = ConsumerService()
+consumer_repository: ConsumerRepository = ConsumerRepository()
 
 
 @consumer_router.post(
     "/", response_model=APIResponse[ConsumerRead], summary="Create a new consumer"
 )
-@public_route
 async def create_consumer(payload: ConsumerCreate):
-    return await consumer_service.create(payload)
+    return await consumer_repository.create(payload)
 
 
 @consumer_router.get(
@@ -34,7 +33,7 @@ async def list_consumers(
     skip: int = 0,
     limit: int = 20,
 ):
-    return await consumer_service.find(query, skip=skip, limit=limit)
+    return await consumer_repository.find(query, skip=skip, limit=limit)
 
 
 @consumer_router.get(
@@ -45,7 +44,7 @@ async def list_consumers(
 async def get_consumer(
     consumer_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await consumer_service.get(consumer_id)
+    return await consumer_repository.get(consumer_id)
 
 
 @consumer_router.patch(
@@ -58,7 +57,7 @@ async def update_consumer(
     payload: ConsumerUpdate,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    return await consumer_service.update(consumer_id, payload)
+    return await consumer_repository.update(consumer_id, payload)
 
 
 @consumer_router.delete(
@@ -67,4 +66,4 @@ async def update_consumer(
 async def delete_consumer(
     consumer_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await consumer_service.delete(consumer_id)
+    return await consumer_repository.delete(consumer_id)

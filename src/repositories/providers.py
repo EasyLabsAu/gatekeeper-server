@@ -17,10 +17,11 @@ from helpers.auth import (
     verify_password,
     verify_refresh_token,
 )
+from helpers.model import APIError, APIResponse
 from helpers.repository import BaseRepository
-from helpers.utils import APIError, APIResponse
 from models.providers import (
     ProviderAuthRead,
+    ProviderAuthTokens,
     ProviderCreate,
     ProviderInvalidate,
     ProviderManage,
@@ -34,13 +35,13 @@ from models.providers import (
 )
 
 
-class ProviderService(BaseRepository):
+class ProviderRepository(BaseRepository):
     async def create(self, payload: ProviderCreate) -> APIResponse[ProviderRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(Providers).where(
                 Providers.email == payload.email,
-                Providers.is_deleted == False,  # noqa: E712
+                Providers.is_deleted is False,  # noqa: E712
             )
             result = await db.execute(statement)
             if result.scalar_one_or_none():
@@ -53,7 +54,7 @@ class ProviderService(BaseRepository):
             db.add(provider)
             await db.commit()
             await db.refresh(provider)
-            data = ProviderRead.model_validate(provider).model_dump()
+            data = ProviderRead.model_validate(provider)
             return APIResponse[ProviderRead](data=data)
         except IntegrityError as e:
             await db.rollback()
@@ -67,7 +68,7 @@ class ProviderService(BaseRepository):
         skip: int = 0,
         limit: int = 20,
         exclude_deleted: bool = True,
-    ) -> APIResponse[ProviderRead] | None:
+    ) -> APIResponse[list[ProviderRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             filters = []
@@ -78,7 +79,7 @@ class ProviderService(BaseRepository):
             if query.email:
                 filters.append(Providers.email == query.email)
             if exclude_deleted:
-                filters.append(Providers.is_deleted == False)  # noqa: E712
+                filters.append(Providers.is_deleted is False)  # noqa: E712
 
             statement = select(Providers)
             if filters:
@@ -89,8 +90,8 @@ class ProviderService(BaseRepository):
             providers = result.scalars().all()
 
             data = [ProviderRead.model_validate(provider) for provider in providers]
-            return APIResponse[ProviderRead](
-                data=[item.model_dump() for item in data],
+            return APIResponse[list[ProviderRead]](
+                data=data,
                 meta={"skip": skip, "limit": limit, "count": len(data)},
             )
         finally:
@@ -103,7 +104,7 @@ class ProviderService(BaseRepository):
         try:
             statement = select(Providers).where(Providers.id == id)
             if not include_deleted:
-                statement = statement.where(Providers.is_deleted == False)  # noqa: E712
+                statement = statement.where(Providers.is_deleted is False)  # noqa: E712
 
             result = await db.execute(statement)
             provider = result.scalar_one_or_none()
@@ -111,7 +112,7 @@ class ProviderService(BaseRepository):
             if not provider:
                 raise APIError(404, "Provider not found")
 
-            data = ProviderRead.model_validate(provider).model_dump()
+            data = ProviderRead.model_validate(provider)
             return APIResponse[ProviderRead](data=data)
         finally:
             await self.close_database_session()
@@ -123,7 +124,7 @@ class ProviderService(BaseRepository):
         try:
             statement = select(Providers).where(
                 Providers.id == id,
-                Providers.is_deleted == False,  # noqa: E712
+                Providers.is_deleted is False,  # noqa: E712
             )
             result = await db.execute(statement)
             provider = result.scalar_one_or_none()
@@ -138,7 +139,7 @@ class ProviderService(BaseRepository):
                 email_check_statement = select(Providers).where(
                     Providers.email == new_email,
                     Providers.id != id,
-                    Providers.is_deleted == False,  # noqa: E712
+                    Providers.is_deleted is False,  # noqa: E712
                 )
                 email_check = await db.execute(email_check_statement)
                 if email_check.scalar_one_or_none():
@@ -155,7 +156,7 @@ class ProviderService(BaseRepository):
             db.add(provider)
             await db.commit()
             await db.refresh(provider)
-            data = ProviderRead.model_validate(provider).model_dump()
+            data = ProviderRead.model_validate(provider)
             return APIResponse[ProviderRead](data=data)
         except IntegrityError as e:
             await db.rollback()
@@ -168,7 +169,7 @@ class ProviderService(BaseRepository):
         try:
             statement = select(Providers).where(
                 Providers.id == id,
-                Providers.is_deleted == False,  # noqa: E712
+                Providers.is_deleted is False,  # noqa: E712
             )
             result = await db.execute(statement)
             provider = result.scalar_one_or_none()
@@ -176,7 +177,7 @@ class ProviderService(BaseRepository):
             if not provider:
                 raise APIError(404, "Provider not found")
 
-            Providers(provider).soft_delete()
+            provider.soft_delete()
             db.add(provider)
             await db.commit()
             return APIResponse(message="Provider soft-deleted")
@@ -190,7 +191,7 @@ class ProviderService(BaseRepository):
         try:
             stmt = select(Providers).where(
                 Providers.email == payload.email,
-                Providers.is_deleted == False,  # noqa: E712
+                Providers.is_deleted is False,  # noqa: E712
             )
             result = await db.execute(stmt)
             provider = result.scalar_one_or_none()
@@ -206,13 +207,13 @@ class ProviderService(BaseRepository):
             await db.commit()
             await db.refresh(provider)
 
-            data = {
-                "auth": {
-                    "access_token": create_access_token(provider.id),
-                    "refresh_token": create_refresh_token(provider.id),
-                },
-                "provider": ProviderRead.model_validate(provider).model_dump(),
-            }
+            data = ProviderAuthRead(
+                auth=ProviderAuthTokens(
+                    access_token=create_access_token(provider.id),
+                    refresh_token=create_refresh_token(provider.id),
+                ),
+                provider=ProviderRead.model_validate(provider),
+            )
             return APIResponse[ProviderAuthRead](data=data)
         finally:
             await self.close_database_session()
@@ -233,7 +234,7 @@ class ProviderService(BaseRepository):
 
             stmt = select(Providers).where(
                 Providers.email == provider_email,
-                Providers.is_deleted == False,  # noqa: E712
+                Providers.is_deleted is False,  # noqa: E712
             )
             result = await db.execute(stmt)
             provider = result.scalar_one_or_none()
@@ -241,13 +242,13 @@ class ProviderService(BaseRepository):
             if not provider:
                 raise APIError(404, "Provider not found")
 
-            data = {
-                "auth": {
-                    "access_token": access_token,
-                    "refresh_token": new_refresh_token,
-                },
-                "provider": ProviderRead.model_validate(provider).model_dump(),
-            }
+            data = ProviderAuthRead(
+                auth=ProviderAuthTokens(
+                    access_token=create_access_token(provider.id),
+                    refresh_token=create_refresh_token(provider.id),
+                ),
+                provider=ProviderRead.model_validate(provider),
+            )
             return APIResponse[ProviderAuthRead](data=data)
         finally:
             await self.close_database_session()
@@ -270,7 +271,7 @@ class ProviderService(BaseRepository):
         try:
             stmt = select(Providers).where(
                 Providers.email == payload.email,
-                Providers.is_deleted == False,  # noqa: E712
+                Providers.is_deleted is False,  # noqa: E712
             )
             result = await db.execute(stmt)
             provider_or_none = result.scalar_one_or_none()
