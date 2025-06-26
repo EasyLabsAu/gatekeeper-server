@@ -30,15 +30,6 @@ class Forms(BaseModel, table=True):
     created_by: UUID = Field(foreign_key="providers.id")
     meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
 
-    # One form can have multiple sections
-    # sections: list["FormSections"] = Relationship(back_populates="form")
-
-    # One form can receive many user responses
-    # responses: list["FormResponses"] = Relationship(back_populates="form")
-
-    # Back-reference to the provider who created the form
-    # provider: "Providers" = Relationship(back_populates="forms")
-
 
 class FormCreate(SQLModel):
     name: str
@@ -76,26 +67,17 @@ class FormQuery(BaseModel):
 
 
 # A form is divided into one or more sections
-class FormSections(BaseModel, table=True, table_name="form_sections"):
+class FormSections(BaseModel, table=True):
     form_id: UUID = Field(foreign_key="forms.id")  # Reference to the parent form
     title: str  # Section title
     description: str | None = None  # Optional section description
     order: int  # Position of the section in the form
 
-    # Back-reference to the parent form
-    # form: "Forms" = Relationship(back_populates="sections")
-
-    # One section can have multiple questions
-    # questions: list["FormQuestions"] = Relationship(back_populates="section")
-
-    # One section can have multiple responses from users
-    # responses: list["FormSectionResponses"] = Relationship(back_populates="section")
-
 
 # Each section contains one or more questions
-class FormQuestions(BaseModel, table=True, table_name="form_questions"):
+class FormQuestions(BaseModel, table=True):
     section_id: UUID = Field(
-        foreign_key="form_sections.id"
+        foreign_key="formsections.id"
     )  # Reference to the parent section
     label: str  # The question text shown to the user
     field_type: FormFieldTypes  # Type of the question (text, number, etc.)
@@ -109,72 +91,36 @@ class FormQuestions(BaseModel, table=True, table_name="form_questions"):
         description="Applicable for single/multiple choice fields",
     )
 
-    # Back-reference to the parent section
-    # section: "FormSections" = Relationship(back_populates="questions")
-
-    # One question can have multiple responses from users
-    # responses: list["FormQuestionResponses"] = Relationship(back_populates="question")
-
 
 # Stores one user's overall submission of a form
-class FormResponses(BaseModel, table=True, table_name="form_responses"):
+class FormResponses(BaseModel, table=True):
     form_id: UUID = Field(foreign_key="forms.id")  # Reference to the original form
     session_id: UUID = Field(
         foreign_key="sessions.id"
     )  # Reference to the session this response belongs to
     submitted_at: str | None = None
 
-    # Back-reference to the form that was answered
-    # form: "Forms" = Relationship(back_populates="responses")
-
-    # One form response consists of multiple section responses
-    # section_responses: list["FormSectionResponses"] = Relationship(
-    #     back_populates="form_response"
-    # )
-
-    # session: "Sessions" = Relationship(back_populates="form_responses")
-
 
 # Stores user's answers for a specific section of a form
-class FormSectionResponses(BaseModel, table=True, table_name="form_section_responses"):
+class FormSectionResponses(BaseModel, table=True):
     response_id: UUID = Field(
-        foreign_key="form_responses.id"
+        foreign_key="formresponses.id"
     )  # Reference to overall form response
     section_id: UUID = Field(
-        foreign_key="form_sections.id"  # This now correctly references the table name
+        foreign_key="formsections.id"  # This now correctly references the table name
     )  # Reference to the section answered
-
-    # Back-reference to the overall form response
-    # form_response: "FormResponses" = Relationship(back_populates="section_responses")
-
-    # Back-reference to the section that was answered
-    # section: "FormSections" = Relationship(back_populates="responses")
-
-    # One section response includes multiple question responses
-    # question_responses: list["FormQuestionResponses"] = Relationship(
-    #     back_populates="section_response"
-    # )
 
 
 # Stores user's answer to a specific question in a section
-class FormQuestionResponses(
-    BaseModel, table=True, table_name="form_question_responses"
-):
+class FormQuestionResponses(BaseModel, table=True):
     section_response_id: UUID = Field(
-        foreign_key="form_section_responses.id"
+        foreign_key="formsectionresponses.id"
     )  # Which section this answer belongs to
     question_id: UUID = Field(
-        foreign_key="form_questions.id"  # This now correctly references the table name
+        foreign_key="formquestions.id"  # This now correctly references the table name
     )  # Which question this is an answer to
 
     # User's actual answer (can be string, number, datetime, etc. — stored as JSON)
     answer: str
     # Timestamp when the answer was submitted
     submitted_at: str | None = None
-    # Back-reference to the parent section response
-    # section_response: "FormSectionResponses" = Relationship(
-    #     back_populates="question_responses"
-    # )
-
-    # Back-reference to the question that was answered
-    # question: "FormQuestions" = Relationship(back_populates="responses")

@@ -1,8 +1,8 @@
-"""create intial tables
+"""create initial tables
 
-Revision ID: 1463122c59f7
+Revision ID: 282b045db77a
 Revises: 
-Create Date: 2025-06-22 17:48:44.655170
+Create Date: 2025-06-26 15:51:15.710621
 
 """
 from typing import Sequence, Union  # noqa: F401, UP035
@@ -15,7 +15,7 @@ from sqlmodel import AutoString
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '1463122c59f7'
+revision: str = '282b045db77a'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -101,7 +101,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_sessions_id'), 'sessions', ['id'], unique=False)
-    op.create_table('form_responses',
+    op.create_table('formresponses',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
@@ -114,8 +114,8 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['session_id'], ['sessions.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_form_responses_id'), 'form_responses', ['id'], unique=False)
-    op.create_table('form_sections',
+    op.create_index(op.f('ix_formresponses_id'), 'formresponses', ['id'], unique=False)
+    op.create_table('formsections',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
@@ -128,8 +128,8 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['form_id'], ['forms.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_form_sections_id'), 'form_sections', ['id'], unique=False)
-    op.create_table('form_questions',
+    op.create_index(op.f('ix_formsections_id'), 'formsections', ['id'], unique=False)
+    op.create_table('formquestions',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
@@ -141,11 +141,11 @@ def upgrade() -> None:
     sa.Column('required', sa.Boolean(), nullable=False),
     sa.Column('order', sa.Integer(), nullable=False),
     sa.Column('options', postgresql.ARRAY(sa.Text()), nullable=True),
-    sa.ForeignKeyConstraint(['section_id'], ['form_sections.id'], ),
+    sa.ForeignKeyConstraint(['section_id'], ['formsections.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_form_questions_id'), 'form_questions', ['id'], unique=False)
-    op.create_table('form_section_responses',
+    op.create_index(op.f('ix_formquestions_id'), 'formquestions', ['id'], unique=False)
+    op.create_table('formsectionresponses',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
@@ -153,12 +153,12 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.Column('response_id', sa.Uuid(), nullable=False),
     sa.Column('section_id', sa.Uuid(), nullable=False),
-    sa.ForeignKeyConstraint(['response_id'], ['form_responses.id'], ),
-    sa.ForeignKeyConstraint(['section_id'], ['form_sections.id'], ),
+    sa.ForeignKeyConstraint(['response_id'], ['formresponses.id'], ),
+    sa.ForeignKeyConstraint(['section_id'], ['formsections.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_form_section_responses_id'), 'form_section_responses', ['id'], unique=False)
-    op.create_table('form_question_responses',
+    op.create_index(op.f('ix_formsectionresponses_id'), 'formsectionresponses', ['id'], unique=False)
+    op.create_table('formquestionresponses',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
@@ -168,27 +168,27 @@ def upgrade() -> None:
     sa.Column('question_id', sa.Uuid(), nullable=False),
     sa.Column('answer', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('submitted_at', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.ForeignKeyConstraint(['question_id'], ['form_questions.id'], ),
-    sa.ForeignKeyConstraint(['section_response_id'], ['form_section_responses.id'], ),
+    sa.ForeignKeyConstraint(['question_id'], ['formquestions.id'], ),
+    sa.ForeignKeyConstraint(['section_response_id'], ['formsectionresponses.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_form_question_responses_id'), 'form_question_responses', ['id'], unique=False)
+    op.create_index(op.f('ix_formquestionresponses_id'), 'formquestionresponses', ['id'], unique=False)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
-    op.drop_index(op.f('ix_form_question_responses_id'), table_name='form_question_responses')
-    op.drop_table('form_question_responses')
-    op.drop_index(op.f('ix_form_section_responses_id'), table_name='form_section_responses')
-    op.drop_table('form_section_responses')
-    op.drop_index(op.f('ix_form_questions_id'), table_name='form_questions')
-    op.drop_table('form_questions')
-    op.drop_index(op.f('ix_form_sections_id'), table_name='form_sections')
-    op.drop_table('form_sections')
-    op.drop_index(op.f('ix_form_responses_id'), table_name='form_responses')
-    op.drop_table('form_responses')
+    op.drop_index(op.f('ix_formquestionresponses_id'), table_name='formquestionresponses')
+    op.drop_table('formquestionresponses')
+    op.drop_index(op.f('ix_formsectionresponses_id'), table_name='formsectionresponses')
+    op.drop_table('formsectionresponses')
+    op.drop_index(op.f('ix_formquestions_id'), table_name='formquestions')
+    op.drop_table('formquestions')
+    op.drop_index(op.f('ix_formsections_id'), table_name='formsections')
+    op.drop_table('formsections')
+    op.drop_index(op.f('ix_formresponses_id'), table_name='formresponses')
+    op.drop_table('formresponses')
     op.drop_index(op.f('ix_sessions_id'), table_name='sessions')
     op.drop_table('sessions')
     op.drop_index(op.f('ix_forms_id'), table_name='forms')
