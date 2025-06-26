@@ -5,8 +5,6 @@ from typing import Any
 
 import jwt
 from fastapi import Security
-from fastapi.applications import FastAPI
-from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from passlib.context import CryptContext
@@ -127,19 +125,6 @@ def rotate_refresh_token(old_token: str) -> tuple[str, str]:
     new_refresh_token = create_refresh_token(payload["sub"])
 
     return new_access_token, new_refresh_token
-
-
-def get_public_paths(app: FastAPI) -> set[str]:
-    public_paths = {
-        "/docs",
-        "/redoc",
-        "/openapi.json",
-        "/docs/oauth2-redirect",
-    }
-    for route in app.routes:
-        if isinstance(route, APIRoute) and getattr(route.endpoint, "_is_public", False):
-            public_paths.add(route.path)
-    return public_paths
 
 
 def require_auth(token: HTTPAuthorizationCredentials = Security(security)):

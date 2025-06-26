@@ -51,7 +51,6 @@ cd gatekeeper-server
 ```bash
 pdm venv create 3.10
 pdm use -f .venv
-pdm venv activate
 pdm install
 ```
 
@@ -74,14 +73,14 @@ pdm run alembic upgrade head
 pdm run dev
 ```
 
-The API will be available at `http://localhost:8000`
+The API will be available at `http://localhost:8080`
 
 ### API Documentation
 
 Once the server is running, you can access:
 
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- Swagger UI: `http://localhost:8080/docs`
+- ReDoc: `http://localhost:8080/redoc`
 
 ## Development
 

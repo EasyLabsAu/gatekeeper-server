@@ -1,19 +1,14 @@
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Column, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel
 
 from helpers.model import BaseModel
-
-if TYPE_CHECKING:
-    from models.consumers import Consumers
-    from models.forms import FormResponses
 
 
 class SessionStatus(str, Enum):
@@ -47,13 +42,6 @@ class Sessions(BaseModel, table=True):
     feedback: str | None = None
     rating: float | None = None
     meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
-    # Use string-based forward reference + proper back_populates name
-    form_responses: Mapped[list["FormResponses"]] = Relationship(
-        back_populates="session"
-    )
-
-    # Back-reference to the consumer who owns the session
-    consumer: Mapped["Consumers"] = Relationship(back_populates="sessions")
 
 
 class SessionCreate(SQLModel):
