@@ -153,7 +153,7 @@ class FormQuestionsUpdate(SQLModel):
 
 
 class FormQuestionsQuery(BaseModel):
-    form_id: UUID
+    section_id: UUID | None = None
 
 
 # Stores one user's overall submission of a form
@@ -190,7 +190,7 @@ class FormResponsesUpdate(SQLModel):
 
 class FormResponsesQuery(BaseModel):
     form_id: UUID | None = None
-    session_id: UUID
+    session_id: UUID | None = None
 
 
 # Stores user's answers for a specific section of a form

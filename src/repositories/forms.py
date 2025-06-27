@@ -274,8 +274,9 @@ class FormQuestionRepository(BaseRepository):
     ) -> APIResponse[list[FormQuestionsRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            # TODO : Add custom filters based on query
-            statement = select(FormQuestions)
+            statement = select(FormQuestions).where(
+                FormQuestions.section_id == query.section_id
+            )
             statement = statement.offset(skip).limit(limit)
             result = await db.execute(statement)
             questions = result.scalars().all()
