@@ -166,7 +166,7 @@ class FormSectionRepository(BaseRepository):
     ) -> APIResponse[FormSectionsRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            section = FormSectionsCreate(**payload.model_dump())
+            section = FormSections(**payload.model_dump())
             db.add(section)
             await db.commit()
             await db.refresh(section)
