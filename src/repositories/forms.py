@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 from src.helpers.model import APIError, APIResponse
@@ -67,19 +68,30 @@ class FormRepository(BaseRepository):
         try:
             filters = []
             if query.name:
-                filters.append(getattr(Forms, "name") == query.name)  # noqa: B009
+                filters.append(Forms.name == query.name)
             if query.created_by:
-                filters.append(getattr(Forms, "created_by") == query.created_by)  # noqa: B009
+                filters.append(Forms.created_by == query.created_by)
             if query.type:
-                filters.append(getattr(Forms, "type") == query.type)  # noqa: B009
+                filters.append(Forms.type == query.type)
             if exclude_deleted and hasattr(Forms, "is_deleted"):
-                filters.append(getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
-            statement = select(Forms)
+                filters.append(Forms.is_deleted == False)
+
+            statement = (
+                select(Forms)
+                .options(
+                    selectinload(getattr(Forms, "sections")).selectinload(
+                        getattr(FormSections, "questions")
+                    )
+                )
+                .offset(skip)
+                .limit(limit)
+            )
+
             if filters:
                 statement = statement.where(*filters)
-            statement = statement.offset(skip).limit(limit)
+
             result = await db.execute(statement)
-            forms = result.scalars().all()
+            forms = result.scalars().unique().all()
             data = [FormRead.model_validate(form) for form in forms]
             return APIResponse[list[FormRead]](
                 data=data,
@@ -93,13 +105,23 @@ class FormRepository(BaseRepository):
     ) -> APIResponse[FormRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            statement = select(Forms).where(Forms.id == id)
+            statement = (
+                select(Forms)
+                .where(Forms.id == id)
+                .options(
+                    selectinload(getattr(Forms, "sections")).selectinload(
+                        getattr(FormSections, "questions")
+                    )
+                )
+            )
             if not include_deleted and hasattr(Forms, "is_deleted"):
-                statement = statement.where(getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
+                statement = statement.where(Forms.is_deleted == False)
+
             result = await db.execute(statement)
             form = result.scalar_one_or_none()
             if not form:
                 raise APIError(404, "Form not found")
+
             data = FormRead.model_validate(form)
             return APIResponse[FormRead](data=data)
         finally:

@@ -1,15 +1,18 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import Column, Text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql.json import JSONB
-from sqlmodel import Field
-from sqlmodel.main import SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 
 from src.helpers.model import BaseModel
+
+if TYPE_CHECKING:
+    from src.models.providers import Providers  # Assuming this is the right path
+    from src.models.sessions import Sessions  # Assuming this is the right path
 
 
 # Enum to define different types of form fields that a user can interact with
@@ -30,6 +33,11 @@ class Forms(BaseModel, table=True):
     created_by: UUID = Field(foreign_key="providers.id")
     meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
 
+    sections: list["FormSections"] = Relationship(
+        back_populates="form", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    responses: list["FormResponses"] = Relationship(back_populates="form")
+
 
 class FormCreate(SQLModel):
     name: str
@@ -47,6 +55,7 @@ class FormRead(SQLModel):
     meta_data: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime | None
+    sections: list["FormSectionsRead"] = []
 
 
 class FormUpdate(SQLModel):
@@ -71,6 +80,12 @@ class FormSections(BaseModel, table=True):
     description: str | None = None  # Optional section description
     order: int  # Position of the section in the form
 
+    form: "Forms" = Relationship(back_populates="sections")
+    questions: list["FormQuestions"] = Relationship(
+        back_populates="section", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    responses: list["FormSectionResponses"] = Relationship(back_populates="section")
+
 
 class FormSectionsCreate(SQLModel):
     form_id: UUID
@@ -87,6 +102,7 @@ class FormSectionsRead(SQLModel):
     form_id: UUID
     created_at: datetime
     updated_at: datetime | None
+    questions: list["FormQuestionsRead"] = []
 
 
 class FormSectionsUpdate(SQLModel):
@@ -116,6 +132,9 @@ class FormQuestions(BaseModel, table=True):
         sa_column=Column(ARRAY(Text())),
         description="Applicable for single/multiple choice fields",
     )
+
+    section: "FormSections" = Relationship(back_populates="questions")
+    responses: list["FormQuestionResponses"] = Relationship(back_populates="question")
 
 
 class FormQuestionsCreate(SQLModel):
@@ -160,6 +179,11 @@ class FormResponses(BaseModel, table=True):
     )  # Reference to the session this response belongs to
     submitted_at: str | None = None
 
+    form: "Forms" = Relationship(back_populates="responses")
+    section_responses: list["FormSectionResponses"] = Relationship(
+        back_populates="response"
+    )
+
 
 class FormResponsesCreate(SQLModel):
     form_id: UUID
@@ -195,6 +219,12 @@ class FormSectionResponses(BaseModel, table=True):
     section_id: UUID = Field(
         foreign_key="formsections.id"  # This now correctly references the table name
     )  # Reference to the section answered
+
+    response: "FormResponses" = Relationship(back_populates="section_responses")
+    section: "FormSections" = Relationship(back_populates="responses")
+    question_responses: list["FormQuestionResponses"] = Relationship(
+        back_populates="section_response"
+    )
 
 
 class FormSectionResponsesCreate(SQLModel):
@@ -234,6 +264,11 @@ class FormQuestionResponses(BaseModel, table=True):
     # Timestamp when the answer was submitted
     submitted_at: str | None = None
 
+    section_response: "FormSectionResponses" = Relationship(
+        back_populates="question_responses"
+    )
+    question: "FormQuestions" = Relationship(back_populates="responses")
+
 
 class FormQuestionResponsesCreate(SQLModel):
     section_response_id: UUID
@@ -262,3 +297,7 @@ class FormQuestionResponsesUpdate(SQLModel):
 class FormQuestionResponsesQuery(BaseModel):
     section_response_id: UUID | None = None
     question_id: UUID | None = None
+
+
+FormRead.model_rebuild()
+FormSectionsRead.model_rebuild()
