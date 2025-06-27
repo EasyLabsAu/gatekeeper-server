@@ -205,20 +205,31 @@ class FormSectionRepository(BaseRepository):
     ) -> APIResponse[list[FormSectionsRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            # TODO : Add custom filters based on query
-            statement = select(FormSections)
-            statement = statement.offset(skip).limit(limit)
+            statement = (
+                select(FormSections)
+                .where(FormSections.form_id == query.form_id)
+                .options(selectinload(getattr(FormSections, "questions")))
+                .offset(skip)
+                .limit(limit)
+            )
             result = await db.execute(statement)
-            sections = result.scalars().all()
+            sections = result.scalars().unique().all()
             data = [FormSectionsRead.model_validate(section) for section in sections]
-            return APIResponse[list[FormSectionsRead]](data=data)
+            return APIResponse[list[FormSectionsRead]](
+                data=data,
+                meta={"skip": skip, "limit": limit, "count": len(data)},
+            )
         finally:
             await self.close_database_session()
 
     async def get(self, id: UUID) -> APIResponse[FormSectionsRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            statement = select(FormSections).where(FormSections.id == id)
+            statement = (
+                select(FormSections)
+                .where(FormSections.id == id)
+                .options(selectinload(getattr(FormSections, "questions")))
+            )
             result = await db.execute(statement)
             section = result.scalar_one_or_none()
             if not section:
