@@ -10,12 +10,32 @@ from models.forms import (
     FormCreate,
     FormQuery,
     FormQuestionResponses,
+    FormQuestionResponsesCreate,
+    FormQuestionResponsesQuery,
+    FormQuestionResponsesRead,
+    FormQuestionResponsesUpdate,
     FormQuestions,
+    FormQuestionsCreate,
+    FormQuestionsQuery,
+    FormQuestionsRead,
+    FormQuestionsUpdate,
     FormRead,
     FormResponses,
+    FormResponsesCreate,
+    FormResponsesQuery,
+    FormResponsesRead,
+    FormResponsesUpdate,
     Forms,
     FormSectionResponses,
+    FormSectionResponsesCreate,
+    FormSectionResponsesQuery,
+    FormSectionResponsesRead,
+    FormSectionResponsesUpdate,
     FormSections,
+    FormSectionsCreate,
+    FormSectionsQuery,
+    FormSectionsRead,
+    FormSectionsUpdate,
     FormUpdate,
 )
 
@@ -53,7 +73,7 @@ class FormRepository(BaseRepository):
             if query.type:
                 filters.append(getattr(Forms, "type") == query.type)  # noqa: B009
             if exclude_deleted and hasattr(Forms, "is_deleted"):
-                filters.append(getattr(Forms, "is_deleted") is False)  # noqa: B009, E712
+                filters.append(getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
             statement = select(Forms)
             if filters:
                 statement = statement.where(*filters)
@@ -75,7 +95,7 @@ class FormRepository(BaseRepository):
         try:
             statement = select(Forms).where(Forms.id == id)
             if not include_deleted and hasattr(Forms, "is_deleted"):
-                statement = statement.where(getattr(Forms, "is_deleted") is False)  # noqa: B009, E712
+                statement = statement.where(getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
             result = await db.execute(statement)
             form = result.scalar_one_or_none()
             if not form:
@@ -92,7 +112,7 @@ class FormRepository(BaseRepository):
         try:
             statement = select(Forms).where(
                 Forms.id == id,
-                (getattr(Forms, "is_deleted") is False)  # noqa: B009, E712
+                (getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
                 if hasattr(Forms, "is_deleted")
                 else True,
             )
@@ -119,7 +139,7 @@ class FormRepository(BaseRepository):
         try:
             statement = select(Forms).where(
                 Forms.id == id,
-                (getattr(Forms, "is_deleted") is False)  # noqa: B009, E712
+                (getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
                 if hasattr(Forms, "is_deleted")
                 else True,
             )
@@ -141,14 +161,17 @@ class FormRepository(BaseRepository):
 
 
 class FormSectionRepository(BaseRepository):
-    async def create(self, payload: dict) -> APIResponse | None:
+    async def create(
+        self, payload: FormSectionsCreate
+    ) -> APIResponse[FormSectionsRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            section = FormSections(**payload)
+            section = FormSectionsCreate(**payload.model_dump())
             db.add(section)
             await db.commit()
             await db.refresh(section)
-            return APIResponse(data=section)
+            data = FormSectionsRead.model_validate(section)
+            return APIResponse[FormSectionsRead](data=data)
         except IntegrityError as e:
             await db.rollback()
             raise APIError(400, "Database integrity error") from e
@@ -156,19 +179,21 @@ class FormSectionRepository(BaseRepository):
             await self.close_database_session()
 
     async def find(
-        self, form_id: UUID, skip: int = 0, limit: int = 20
-    ) -> APIResponse | None:
+        self, query: FormSectionsQuery, skip: int = 0, limit: int = 20
+    ) -> APIResponse[list[FormSectionsRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            statement = select(FormSections).where(FormSections.form_id == form_id)
+            # TODO : Add custom filters based on query
+            statement = select(FormSections)
             statement = statement.offset(skip).limit(limit)
             result = await db.execute(statement)
             sections = result.scalars().all()
-            return APIResponse(data=list(sections))
+            data = [FormSectionsRead.model_validate(section) for section in sections]
+            return APIResponse[list[FormSectionsRead]](data=data)
         finally:
             await self.close_database_session()
 
-    async def get(self, id: UUID) -> APIResponse | None:
+    async def get(self, id: UUID) -> APIResponse[FormSectionsRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(FormSections).where(FormSections.id == id)
@@ -176,11 +201,14 @@ class FormSectionRepository(BaseRepository):
             section = result.scalar_one_or_none()
             if not section:
                 raise APIError(404, "Form section not found")
-            return APIResponse(data=section)
+            data = FormSectionsRead.model_validate(section)
+            return APIResponse[FormSectionsRead](data=data)
         finally:
             await self.close_database_session()
 
-    async def update(self, id: UUID, payload: dict) -> APIResponse | None:
+    async def update(
+        self, id: UUID, payload: FormSectionsUpdate
+    ) -> APIResponse[FormSectionsRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(FormSections).where(FormSections.id == id)
@@ -188,12 +216,14 @@ class FormSectionRepository(BaseRepository):
             section = result.scalar_one_or_none()
             if not section:
                 raise APIError(404, "Form section not found")
-            for key, value in payload.items():
+            update_data = payload.model_dump(exclude_unset=True)
+            for key, value in update_data.items():
                 setattr(section, key, value)
             db.add(section)
             await db.commit()
             await db.refresh(section)
-            return APIResponse(data=section)
+            data = FormSectionsRead.model_validate(section)
+            return APIResponse[FormSectionsRead](data=data)
         except IntegrityError as e:
             await db.rollback()
             raise APIError(400, "Database integrity error") from e
@@ -222,14 +252,17 @@ class FormSectionRepository(BaseRepository):
 
 
 class FormQuestionRepository(BaseRepository):
-    async def create(self, payload: dict) -> APIResponse | None:
+    async def create(
+        self, payload: FormQuestionsCreate
+    ) -> APIResponse[FormQuestionsRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            question = FormQuestions(**payload)
+            question = FormQuestions(**payload.model_dump())
             db.add(question)
             await db.commit()
             await db.refresh(question)
-            return APIResponse(data=question)
+            data = FormQuestionsRead.model_validate(question)
+            return APIResponse[FormQuestionsRead](data=data)
         except IntegrityError as e:
             await db.rollback()
             raise APIError(400, "Database integrity error") from e
@@ -237,21 +270,23 @@ class FormQuestionRepository(BaseRepository):
             await self.close_database_session()
 
     async def find(
-        self, section_id: UUID, skip: int = 0, limit: int = 20
-    ) -> APIResponse | None:
+        self, query: FormQuestionsQuery, skip: int = 0, limit: int = 20
+    ) -> APIResponse[list[FormQuestionsRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            statement = select(FormQuestions).where(
-                FormQuestions.section_id == section_id
-            )
+            # TODO : Add custom filters based on query
+            statement = select(FormQuestions)
             statement = statement.offset(skip).limit(limit)
             result = await db.execute(statement)
             questions = result.scalars().all()
-            return APIResponse(data=list(questions))
+            data = [
+                FormQuestionsRead.model_validate(question) for question in questions
+            ]
+            return APIResponse[list[FormQuestionsRead]](data=data)
         finally:
             await self.close_database_session()
 
-    async def get(self, id: UUID) -> APIResponse | None:
+    async def get(self, id: UUID) -> APIResponse[FormQuestionsRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(FormQuestions).where(FormQuestions.id == id)
@@ -259,11 +294,14 @@ class FormQuestionRepository(BaseRepository):
             question = result.scalar_one_or_none()
             if not question:
                 raise APIError(404, "Form question not found")
-            return APIResponse(data=question)
+            data = FormQuestionsRead.model_validate(question)
+            return APIResponse[FormQuestionsRead](data=data)
         finally:
             await self.close_database_session()
 
-    async def update(self, id: UUID, payload: dict) -> APIResponse | None:
+    async def update(
+        self, id: UUID, payload: FormQuestionsUpdate
+    ) -> APIResponse[FormQuestionsRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(FormQuestions).where(FormQuestions.id == id)
@@ -271,12 +309,14 @@ class FormQuestionRepository(BaseRepository):
             question = result.scalar_one_or_none()
             if not question:
                 raise APIError(404, "Form question not found")
-            for key, value in payload.items():
+            update_data = payload.model_dump(exclude_unset=True)
+            for key, value in update_data.items():
                 setattr(question, key, value)
             db.add(question)
             await db.commit()
             await db.refresh(question)
-            return APIResponse(data=question)
+            data = FormQuestionsRead.model_validate(question)
+            return APIResponse[FormQuestionsRead](data=data)
         except IntegrityError as e:
             await db.rollback()
             raise APIError(400, "Database integrity error") from e
@@ -305,14 +345,17 @@ class FormQuestionRepository(BaseRepository):
 
 
 class FormResponseRepository(BaseRepository):
-    async def create(self, payload: dict) -> APIResponse | None:
+    async def create(
+        self, payload: FormResponsesCreate
+    ) -> APIResponse[FormResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            response = FormResponses(**payload)
+            response = FormResponses(**payload.model_dump())
             db.add(response)
             await db.commit()
             await db.refresh(response)
-            return APIResponse(data=response)
+            data = FormResponsesRead.model_validate(response)
+            return APIResponse[FormResponsesRead](data=data)
         except IntegrityError as e:
             await db.rollback()
             raise APIError(400, "Database integrity error") from e
@@ -320,19 +363,23 @@ class FormResponseRepository(BaseRepository):
             await self.close_database_session()
 
     async def find(
-        self, form_id: UUID, skip: int = 0, limit: int = 20
-    ) -> APIResponse | None:
+        self, query: FormResponsesQuery, skip: int = 0, limit: int = 20
+    ) -> APIResponse[list[FormResponsesRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            statement = select(FormResponses).where(FormResponses.form_id == form_id)
+            # TODO : Add custom filters based query
+            statement = select(FormResponses)
             statement = statement.offset(skip).limit(limit)
             result = await db.execute(statement)
             responses = result.scalars().all()
-            return APIResponse(data=list(responses))
+            data = [
+                FormResponsesRead.model_validate(response) for response in responses
+            ]
+            return APIResponse[list[FormResponsesRead]](data=data)
         finally:
             await self.close_database_session()
 
-    async def get(self, id: UUID) -> APIResponse | None:
+    async def get(self, id: UUID) -> APIResponse[FormResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(FormResponses).where(FormResponses.id == id)
@@ -340,11 +387,14 @@ class FormResponseRepository(BaseRepository):
             response = result.scalar_one_or_none()
             if not response:
                 raise APIError(404, "Form response not found")
-            return APIResponse(data=response)
+            data = FormResponsesRead.model_validate(response)
+            return APIResponse[FormResponsesRead](data=data)
         finally:
             await self.close_database_session()
 
-    async def update(self, id: UUID, payload: dict) -> APIResponse | None:
+    async def update(
+        self, id: UUID, payload: FormResponsesUpdate
+    ) -> APIResponse[FormResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(FormResponses).where(FormResponses.id == id)
@@ -352,12 +402,14 @@ class FormResponseRepository(BaseRepository):
             response = result.scalar_one_or_none()
             if not response:
                 raise APIError(404, "Form response not found")
-            for key, value in payload.items():
+            update_data = payload.model_dump(exclude_unset=True)
+            for key, value in update_data.items():
                 setattr(response, key, value)
             db.add(response)
             await db.commit()
             await db.refresh(response)
-            return APIResponse(data=response)
+            data = FormResponsesRead.model_validate(response)
+            return APIResponse[FormResponsesRead](data=data)
         except IntegrityError as e:
             await db.rollback()
             raise APIError(400, "Database integrity error") from e
@@ -386,14 +438,17 @@ class FormResponseRepository(BaseRepository):
 
 
 class FormSectionResponseRepository(BaseRepository):
-    async def create(self, payload: dict) -> APIResponse | None:
+    async def create(
+        self, payload: FormSectionResponsesCreate
+    ) -> APIResponse[FormSectionResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            section_response = FormSectionResponses(**payload)
+            section_response = FormSectionResponsesCreate(**payload.model_dump())
             db.add(section_response)
             await db.commit()
             await db.refresh(section_response)
-            return APIResponse(data=section_response)
+            data = FormSectionResponsesRead.model_validate(section_response)
+            return APIResponse[FormSectionResponsesRead](data=data)
         except IntegrityError as e:
             await db.rollback()
             raise APIError(400, "Database integrity error") from e
@@ -401,21 +456,23 @@ class FormSectionResponseRepository(BaseRepository):
             await self.close_database_session()
 
     async def find(
-        self, response_id: UUID, skip: int = 0, limit: int = 20
-    ) -> APIResponse | None:
+        self, query: FormSectionResponsesQuery, skip: int = 0, limit: int = 20
+    ) -> APIResponse[list[FormSectionResponsesRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            statement = select(FormSectionResponses).where(
-                FormSectionResponses.response_id == response_id
-            )
+            # TODO : Add custom filters based query
+            statement = select(FormSectionResponses)
             statement = statement.offset(skip).limit(limit)
             result = await db.execute(statement)
             section_responses = result.scalars().all()
-            return APIResponse(data=list(section_responses))
+            data = [
+                FormSectionResponsesRead.model_validate(sr) for sr in section_responses
+            ]
+            return APIResponse[list[FormSectionResponsesRead]](data=data)
         finally:
             await self.close_database_session()
 
-    async def get(self, id: UUID) -> APIResponse | None:
+    async def get(self, id: UUID) -> APIResponse[FormSectionResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(FormSectionResponses).where(
@@ -425,11 +482,14 @@ class FormSectionResponseRepository(BaseRepository):
             section_response = result.scalar_one_or_none()
             if not section_response:
                 raise APIError(404, "Form section response not found")
-            return APIResponse(data=section_response)
+            data = FormSectionResponsesRead.model_validate(section_response)
+            return APIResponse[FormSectionResponsesRead](data=data)
         finally:
             await self.close_database_session()
 
-    async def update(self, id: UUID, payload: dict) -> APIResponse | None:
+    async def update(
+        self, id: UUID, payload: FormSectionResponsesUpdate
+    ) -> APIResponse[FormSectionResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(FormSectionResponses).where(
@@ -439,12 +499,14 @@ class FormSectionResponseRepository(BaseRepository):
             section_response = result.scalar_one_or_none()
             if not section_response:
                 raise APIError(404, "Form section response not found")
-            for key, value in payload.items():
+            update_data = payload.model_dump(exclude_unset=True)
+            for key, value in update_data.items():
                 setattr(section_response, key, value)
             db.add(section_response)
             await db.commit()
             await db.refresh(section_response)
-            return APIResponse(data=section_response)
+            data = FormSectionResponsesRead.model_validate(section_response)
+            return APIResponse[FormSectionResponsesRead](data=data)
         except IntegrityError as e:
             await db.rollback()
             raise APIError(400, "Database integrity error") from e
@@ -477,14 +539,17 @@ class FormSectionResponseRepository(BaseRepository):
 
 
 class FormQuestionResponseRepository(BaseRepository):
-    async def create(self, payload: dict) -> APIResponse | None:
+    async def create(
+        self, payload: FormQuestionResponsesCreate
+    ) -> APIResponse[FormQuestionResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            question_response = FormQuestionResponses(**payload)
+            question_response = FormQuestionResponsesCreate(**payload.model_dump())
             db.add(question_response)
             await db.commit()
             await db.refresh(question_response)
-            return APIResponse(data=question_response)
+            data = FormQuestionResponsesRead.model_validate(question_response)
+            return APIResponse[FormQuestionResponsesRead](data=data)
         except IntegrityError as e:
             await db.rollback()
             raise APIError(400, "Database integrity error") from e
@@ -492,21 +557,24 @@ class FormQuestionResponseRepository(BaseRepository):
             await self.close_database_session()
 
     async def find(
-        self, section_response_id: UUID, skip: int = 0, limit: int = 20
-    ) -> APIResponse | None:
+        self, query: FormQuestionResponsesQuery, skip: int = 0, limit: int = 20
+    ) -> APIResponse[list[FormQuestionResponsesRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            statement = select(FormQuestionResponses).where(
-                FormQuestionResponses.section_response_id == section_response_id
-            )
+            # TODO : Add custom filters based query
+            statement = select(FormQuestionResponses)
             statement = statement.offset(skip).limit(limit)
             result = await db.execute(statement)
             question_responses = result.scalars().all()
-            return APIResponse(data=list(question_responses))
+            data = [
+                FormQuestionResponsesRead.model_validate(qr)
+                for qr in question_responses
+            ]
+            return APIResponse[list[FormQuestionResponsesRead]](data=data)
         finally:
             await self.close_database_session()
 
-    async def get(self, id: UUID) -> APIResponse | None:
+    async def get(self, id: UUID) -> APIResponse[FormQuestionResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(FormQuestionResponses).where(
@@ -516,11 +584,14 @@ class FormQuestionResponseRepository(BaseRepository):
             question_response = result.scalar_one_or_none()
             if not question_response:
                 raise APIError(404, "Form question response not found")
-            return APIResponse(data=question_response)
+            data = FormQuestionResponsesRead.model_validate(question_response)
+            return APIResponse[FormQuestionResponsesRead](data=data)
         finally:
             await self.close_database_session()
 
-    async def update(self, id: UUID, payload: dict) -> APIResponse | None:
+    async def update(
+        self, id: UUID, payload: FormQuestionResponsesUpdate
+    ) -> APIResponse[FormQuestionResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             statement = select(FormQuestionResponses).where(
@@ -530,12 +601,14 @@ class FormQuestionResponseRepository(BaseRepository):
             question_response = result.scalar_one_or_none()
             if not question_response:
                 raise APIError(404, "Form question response not found")
-            for key, value in payload.items():
+            update_data = payload.model_dump(exclude_unset=True)
+            for key, value in update_data.items():
                 setattr(question_response, key, value)
             db.add(question_response)
             await db.commit()
             await db.refresh(question_response)
-            return APIResponse(data=question_response)
+            data = FormQuestionResponsesRead.model_validate(question_response)
+            return APIResponse[FormQuestionResponsesRead](data=data)
         except IntegrityError as e:
             await db.rollback()
             raise APIError(400, "Database integrity error") from e

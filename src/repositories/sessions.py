@@ -46,7 +46,7 @@ class SessionRepository(BaseRepository):
             if query.status:
                 filters.append(Sessions.status == query.status)
             if exclude_deleted and hasattr(Sessions, "is_deleted"):
-                filters.append(Sessions.is_deleted is False)  # noqa: E712
+                filters.append(Sessions.is_deleted == False)  # noqa: E712
 
             statement = select(Sessions)
             if filters:
@@ -76,7 +76,7 @@ class SessionRepository(BaseRepository):
         try:
             statement = select(Sessions).where(Sessions.id == id)
             if not include_deleted and hasattr(Sessions, "is_deleted"):
-                statement = statement.where(Sessions.is_deleted is False)  # noqa: E712
+                statement = statement.where(Sessions.is_deleted == False)  # noqa: E712
             result = await db.execute(statement)
             session = result.scalar_one_or_none()
             if not session:
@@ -93,7 +93,7 @@ class SessionRepository(BaseRepository):
         try:
             statement = select(Sessions).where(
                 Sessions.id == id,
-                (Sessions.is_deleted is False)  # noqa: E712
+                (Sessions.is_deleted == False)  # noqa: E712
                 if hasattr(Sessions, "is_deleted")
                 else True,
             )
@@ -120,7 +120,7 @@ class SessionRepository(BaseRepository):
         try:
             statement = select(Sessions).where(
                 Sessions.id == id,
-                (Sessions.is_deleted is False)  # noqa: E712
+                (Sessions.is_deleted == False)  # noqa: E712
                 if hasattr(Sessions, "is_deleted")
                 else True,
             )

@@ -9,16 +9,42 @@ from helpers.model import APIResponse
 from models.forms import (
     FormCreate,
     FormQuery,
+    FormQuestionResponses,
+    FormQuestionResponsesCreate,
+    FormQuestionResponsesQuery,
+    FormQuestionResponsesRead,
+    FormQuestionResponsesUpdate,
+    FormQuestions,
+    FormQuestionsCreate,
+    FormQuestionsQuery,
+    FormQuestionsRead,
+    FormQuestionsUpdate,
     FormRead,
+    FormResponses,
+    FormResponsesCreate,
+    FormResponsesQuery,
+    FormResponsesRead,
+    FormResponsesUpdate,
+    Forms,
+    FormSectionResponses,
+    FormSectionResponsesCreate,
+    FormSectionResponsesQuery,
+    FormSectionResponsesRead,
+    FormSectionResponsesUpdate,
+    FormSections,
+    FormSectionsCreate,
+    FormSectionsQuery,
+    FormSectionsRead,
+    FormSectionsUpdate,
     FormUpdate,
 )
 from repositories.forms import (
-    FormQuestionResponseRepository,
     FormQuestionRepository,
-    FormResponseRepository,
-    FormSectionResponseRepository,
-    FormSectionRepository,
+    FormQuestionResponseRepository,
     FormRepository,
+    FormResponseRepository,
+    FormSectionRepository,
+    FormSectionResponseRepository,
 )
 
 form_router: APIRouter = APIRouter(prefix="/api/v1/forms", tags=["forms"])
@@ -37,7 +63,10 @@ question_response_repository: FormQuestionResponseRepository = (
 @form_router.post(
     "/", response_model=APIResponse[FormRead], summary="Create a new form"
 )
-async def create_form(payload: FormCreate):
+async def create_form(
+    payload: FormCreate,
+    _: Annotated[dict[str, Any], Depends(require_auth)],
+):
     return await form_repository.create(payload)
 
 
@@ -45,15 +74,12 @@ async def create_form(payload: FormCreate):
 async def list_forms(
     _: Annotated[dict[str, Any], Depends(require_auth)],
     name: str | None = None,
-    description: str | None = None,
     created_by: UUID | None = None,
     type: str | None = None,
     skip: int = 0,
     limit: int = 20,
 ):
-    query = FormQuery(
-        name=name, description=description, created_by=created_by, type=type
-    )
+    query = FormQuery(name=name, created_by=created_by, type=type)
     return await form_repository.find(query, skip=skip, limit=limit)
 
 
@@ -88,7 +114,6 @@ async def delete_form(
     return await form_repository.delete(form_id)
 
 
-# --- Form Sections CRUD ---
 @form_router.post(
     "/{form_id}/sections",
     response_model=APIResponse,
@@ -96,11 +121,13 @@ async def delete_form(
 )
 async def create_section(
     form_id: UUID,
-    payload: dict,
+    payload: FormSectionsCreate,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    payload["form_id"] = str(form_id)
-    return await section_repository.create(payload)
+    payload_dict = payload.model_dump()
+    payload_dict["form_id"] = str(form_id)
+    payload_obj = FormSectionsCreate(**payload_dict)
+    return await section_repository.create(payload_obj)
 
 
 @form_router.get(
@@ -114,7 +141,9 @@ async def list_sections(
     skip: int = 0,
     limit: int = 20,
 ):
-    return await section_repository.find(form_id, skip=skip, limit=limit)
+    return await section_repository.find(
+        query=FormSectionsQuery(form_id=form_id), skip=skip, limit=limit
+    )
 
 
 @form_router.get(
@@ -144,7 +173,6 @@ async def delete_section(
     return await section_repository.delete(section_id)
 
 
-# --- Form Questions CRUD ---
 @form_router.post(
     "/sections/{section_id}/questions",
     response_model=APIResponse,
@@ -204,7 +232,6 @@ async def delete_question(
     return await question_repository.delete(question_id)
 
 
-# --- Form Responses CRUD ---
 @form_router.post(
     "/{form_id}/responses",
     response_model=APIResponse,
@@ -264,7 +291,6 @@ async def delete_response(
     return await response_repository.delete(response_id)
 
 
-# --- Form Section Responses CRUD ---
 @form_router.post(
     "/responses/{response_id}/section-responses",
     response_model=APIResponse,
@@ -328,7 +354,6 @@ async def delete_section_response(
     return await section_response_repository.delete(section_response_id)
 
 
-# --- Form Question Responses CRUD ---
 @form_router.post(
     "/section-responses/{section_response_id}/question-responses",
     response_model=APIResponse,

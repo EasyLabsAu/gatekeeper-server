@@ -41,7 +41,7 @@ class ProviderRepository(BaseRepository):
         try:
             statement = select(Providers).where(
                 Providers.email == payload.email,
-                Providers.is_deleted is False,  # noqa: E712
+                Providers.is_deleted == False,  # noqa: E712
             )
             result = await db.execute(statement)
             if result.scalar_one_or_none():
@@ -79,7 +79,7 @@ class ProviderRepository(BaseRepository):
             if query.email:
                 filters.append(Providers.email == query.email)
             if exclude_deleted:
-                filters.append(Providers.is_deleted is False)  # noqa: E712
+                filters.append(Providers.is_deleted == False)  # noqa: E712
 
             statement = select(Providers)
             if filters:
@@ -104,7 +104,7 @@ class ProviderRepository(BaseRepository):
         try:
             statement = select(Providers).where(Providers.id == id)
             if not include_deleted:
-                statement = statement.where(Providers.is_deleted is False)  # noqa: E712
+                statement = statement.where(Providers.is_deleted == False)  # noqa: E712
 
             result = await db.execute(statement)
             provider = result.scalar_one_or_none()
@@ -124,7 +124,7 @@ class ProviderRepository(BaseRepository):
         try:
             statement = select(Providers).where(
                 Providers.id == id,
-                Providers.is_deleted is False,  # noqa: E712
+                Providers.is_deleted == False,  # noqa: E712
             )
             result = await db.execute(statement)
             provider = result.scalar_one_or_none()
@@ -139,7 +139,7 @@ class ProviderRepository(BaseRepository):
                 email_check_statement = select(Providers).where(
                     Providers.email == new_email,
                     Providers.id != id,
-                    Providers.is_deleted is False,  # noqa: E712
+                    Providers.is_deleted == False,  # noqa: E712
                 )
                 email_check = await db.execute(email_check_statement)
                 if email_check.scalar_one_or_none():
@@ -169,7 +169,7 @@ class ProviderRepository(BaseRepository):
         try:
             statement = select(Providers).where(
                 Providers.id == id,
-                Providers.is_deleted is False,  # noqa: E712
+                Providers.is_deleted == False,  # noqa: E712
             )
             result = await db.execute(statement)
             provider = result.scalar_one_or_none()
@@ -191,7 +191,7 @@ class ProviderRepository(BaseRepository):
         try:
             stmt = select(Providers).where(
                 Providers.email == payload.email,
-                Providers.is_deleted is False,  # noqa: E712
+                Providers.is_deleted == False,  # noqa: E712
             )
             result = await db.execute(stmt)
             provider = result.scalar_one_or_none()
@@ -234,7 +234,7 @@ class ProviderRepository(BaseRepository):
 
             stmt = select(Providers).where(
                 Providers.email == provider_email,
-                Providers.is_deleted is False,  # noqa: E712
+                Providers.is_deleted == False,  # noqa: E712
             )
             result = await db.execute(stmt)
             provider = result.scalar_one_or_none()
@@ -244,8 +244,8 @@ class ProviderRepository(BaseRepository):
 
             data = ProviderAuthRead(
                 auth=ProviderAuthTokens(
-                    access_token=create_access_token(provider.id),
-                    refresh_token=create_refresh_token(provider.id),
+                    access_token=access_token,
+                    refresh_token=new_refresh_token,
                 ),
                 provider=ProviderRead.model_validate(provider),
             )
@@ -269,12 +269,16 @@ class ProviderRepository(BaseRepository):
     ) -> APIResponse | None:
         db: AsyncSession = await self.get_database_session()
         try:
+            print(payload)
             stmt = select(Providers).where(
                 Providers.email == payload.email,
-                Providers.is_deleted is False,  # noqa: E712
+                Providers.is_deleted == False,  # noqa: E712
             )
             result = await db.execute(stmt)
             provider_or_none = result.scalar_one_or_none()
+
+            print(provider_or_none)
+
             if not provider_or_none:
                 raise APIError(404, "Provider not found")
 

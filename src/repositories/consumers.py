@@ -56,7 +56,7 @@ class ConsumerRepository(BaseRepository):
             if query.address:
                 filters.append(Consumers.address == query.address)
             if hasattr(Consumers, "is_deleted"):
-                filters.append(Consumers.is_deleted is False)  # noqa: E712
+                filters.append(Consumers.is_deleted == False)  # noqa: E712
 
             statement = select(Consumers)
             if filters:
@@ -77,7 +77,7 @@ class ConsumerRepository(BaseRepository):
         try:
             statement = select(Consumers).where(Consumers.id == id)
             if hasattr(Consumers, "is_deleted"):
-                statement = statement.where(Consumers.is_deleted is False)  # noqa: E712
+                statement = statement.where(Consumers.is_deleted == False)  # noqa: E712
             result = await db.execute(statement)
             consumer = result.scalar_one_or_none()
             if not consumer:
@@ -94,7 +94,7 @@ class ConsumerRepository(BaseRepository):
         try:
             statement = select(Consumers).where(Consumers.id == id)
             if hasattr(Consumers, "is_deleted"):
-                statement = statement.where(Consumers.is_deleted is False)  # noqa: E712
+                statement = statement.where(Consumers.is_deleted == False)  # noqa: E712
             result = await db.execute(statement)
             consumer = result.scalar_one_or_none()
             if not consumer:
@@ -108,7 +108,7 @@ class ConsumerRepository(BaseRepository):
                 )
                 if hasattr(Consumers, "is_deleted"):
                     email_check_statement = email_check_statement.where(
-                        Consumers.is_deleted is False  # noqa: E712
+                        Consumers.is_deleted == False  # noqa: E712
                     )
                 email_check = await db.execute(email_check_statement)
                 if email_check.scalar_one_or_none():
@@ -133,7 +133,7 @@ class ConsumerRepository(BaseRepository):
         try:
             statement = select(Consumers).where(Consumers.id == id)
             if hasattr(Consumers, "is_deleted"):
-                statement = statement.where(Consumers.is_deleted is False)  # noqa: E712
+                statement = statement.where(Consumers.is_deleted == False)  # noqa: E712
             result = await db.execute(statement)
             consumer = result.scalar_one_or_none()
             if not consumer:
