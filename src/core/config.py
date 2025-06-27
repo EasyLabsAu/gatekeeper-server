@@ -42,39 +42,25 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "*"  # Comma-separated list of allowed origins
 
     # PostgreSQL settings
-    POSTGRESQL_USER: str = ""
-    POSTGRESQL_PASSWORD: str = ""
-    POSTGRESQL_HOST: str = "localhost"
-    POSTGRESQL_PORT: int = 5432
-    POSTGRESQL_DB: str = "gatekeeper"
-    POSTGRESQL_POOL_SIZE: int = 5
-    POSTGRESQL_MAX_OVERFLOW: int = 10
+    POSTGRES_USER: str = ""
+    POSTGRES_PASSWORD: str = ""
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "gatekeeper"
+    POSTGRES_POOL_SIZE: int = 5
+    POSTGRES_MAX_OVERFLOW: int = 10
 
     @computed_field
     @property
     def POSTGRES_URI(self) -> MultiHostUrl:
-        if (
-            self.ENV == "production"
-            and self.POSTGRESQL_USER
-            and self.POSTGRESQL_PASSWORD
-        ):
-            # Use full credentials for production
-            return MultiHostUrl.build(
-                scheme="postgresql+psycopg",
-                username=self.POSTGRESQL_USER,
-                password=self.POSTGRESQL_PASSWORD,
-                host=self.POSTGRESQL_HOST,
-                port=self.POSTGRESQL_PORT,
-                path=self.POSTGRESQL_DB,
-            )
-        else:
-            # In development, skip username/password and connect via local peer
-            return MultiHostUrl.build(
-                scheme="postgresql+psycopg",
-                host=self.POSTGRESQL_HOST,
-                port=self.POSTGRESQL_PORT,
-                path=self.POSTGRESQL_DB,
-            )
+        return MultiHostUrl.build(
+            scheme="postgresql+psycopg",
+            username=self.POSTGRES_USER,
+            password=self.POSTGRES_PASSWORD,
+            host=self.POSTGRES_HOST,
+            port=self.POSTGRES_PORT,
+            path=self.POSTGRES_DB,
+        )
 
     class Config:
         env_file = ".env"
