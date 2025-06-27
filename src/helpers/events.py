@@ -3,7 +3,7 @@ import threading
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from helpers.logger import Logger
+from src.helpers.logger import Logger
 
 logger = Logger(__name__)
 

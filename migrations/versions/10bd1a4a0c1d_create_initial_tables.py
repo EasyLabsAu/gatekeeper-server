@@ -1,8 +1,8 @@
 """create initial tables
 
-Revision ID: 282b045db77a
+Revision ID: 10bd1a4a0c1d
 Revises: 
-Create Date: 2025-06-26 15:51:15.710621
+Create Date: 2025-06-27 17:00:51.726241
 
 """
 from typing import Sequence, Union  # noqa: F401, UP035
@@ -15,7 +15,7 @@ from sqlmodel import AutoString
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '282b045db77a'
+revision: str = '10bd1a4a0c1d'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -81,40 +81,6 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_forms_id'), 'forms', ['id'], unique=False)
-    op.create_table('sessions',
-    sa.Column('id', sa.Uuid(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.Column('deleted_at', sa.DateTime(), nullable=True),
-    sa.Column('is_deleted', sa.Boolean(), nullable=False),
-    sa.Column('consumer_id', sa.Uuid(), nullable=False),
-    sa.Column('status', sa.Enum('PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', name='sessionstatus'), nullable=True),
-    sa.Column('transcription', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('initiated_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('concluded_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('tags', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('files', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('feedback', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('rating', sa.Float(), nullable=True),
-    sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.ForeignKeyConstraint(['consumer_id'], ['consumers.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_sessions_id'), 'sessions', ['id'], unique=False)
-    op.create_table('formresponses',
-    sa.Column('id', sa.Uuid(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.Column('deleted_at', sa.DateTime(), nullable=True),
-    sa.Column('is_deleted', sa.Boolean(), nullable=False),
-    sa.Column('form_id', sa.Uuid(), nullable=False),
-    sa.Column('session_id', sa.Uuid(), nullable=False),
-    sa.Column('submitted_at', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.ForeignKeyConstraint(['form_id'], ['forms.id'], ),
-    sa.ForeignKeyConstraint(['session_id'], ['sessions.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_formresponses_id'), 'formresponses', ['id'], unique=False)
     op.create_table('formsections',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
@@ -129,6 +95,28 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_formsections_id'), 'formsections', ['id'], unique=False)
+    op.create_table('sessions',
+    sa.Column('id', sa.Uuid(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('deleted_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False),
+    sa.Column('consumer_id', sa.Uuid(), nullable=False),
+    sa.Column('form_id', sa.Uuid(), nullable=False),
+    sa.Column('status', sa.Enum('PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', name='sessionstatus'), nullable=True),
+    sa.Column('transcription', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column('initiated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('concluded_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('tags', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column('files', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column('feedback', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('rating', sa.Float(), nullable=True),
+    sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.ForeignKeyConstraint(['consumer_id'], ['consumers.id'], ),
+    sa.ForeignKeyConstraint(['form_id'], ['forms.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_sessions_id'), 'sessions', ['id'], unique=False)
     op.create_table('formquestions',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
@@ -145,6 +133,20 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_formquestions_id'), 'formquestions', ['id'], unique=False)
+    op.create_table('formresponses',
+    sa.Column('id', sa.Uuid(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('deleted_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False),
+    sa.Column('form_id', sa.Uuid(), nullable=False),
+    sa.Column('session_id', sa.Uuid(), nullable=False),
+    sa.Column('submitted_at', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.ForeignKeyConstraint(['form_id'], ['forms.id'], ),
+    sa.ForeignKeyConstraint(['session_id'], ['sessions.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_formresponses_id'), 'formresponses', ['id'], unique=False)
     op.create_table('formsectionresponses',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
@@ -183,14 +185,14 @@ def downgrade() -> None:
     op.drop_table('formquestionresponses')
     op.drop_index(op.f('ix_formsectionresponses_id'), table_name='formsectionresponses')
     op.drop_table('formsectionresponses')
-    op.drop_index(op.f('ix_formquestions_id'), table_name='formquestions')
-    op.drop_table('formquestions')
-    op.drop_index(op.f('ix_formsections_id'), table_name='formsections')
-    op.drop_table('formsections')
     op.drop_index(op.f('ix_formresponses_id'), table_name='formresponses')
     op.drop_table('formresponses')
+    op.drop_index(op.f('ix_formquestions_id'), table_name='formquestions')
+    op.drop_table('formquestions')
     op.drop_index(op.f('ix_sessions_id'), table_name='sessions')
     op.drop_table('sessions')
+    op.drop_index(op.f('ix_formsections_id'), table_name='formsections')
+    op.drop_table('formsections')
     op.drop_index(op.f('ix_forms_id'), table_name='forms')
     op.drop_table('forms')
     op.drop_index(op.f('ix_providers_id'), table_name='providers')

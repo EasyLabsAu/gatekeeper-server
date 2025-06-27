@@ -9,8 +9,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from passlib.context import CryptContext
 
-from core.config import settings
-from helpers.model import APIError
+from src.core.config import settings
+from src.helpers.model import APIError
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 1

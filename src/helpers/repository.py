@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import SessionFactory
+from src.core.database import SessionFactory
 
 
 class BaseRepository:

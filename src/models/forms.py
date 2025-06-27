@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql.json import JSONB
 from sqlmodel import Field
 from sqlmodel.main import SQLModel
 
-from helpers.model import BaseModel
+from src.helpers.model import BaseModel
 
 
 # Enum to define different types of form fields that a user can interact with

@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlmodel import select
 from tenacity import after_log, before_log, retry, stop_after_attempt, wait_fixed
 
-from core.config import settings
-from helpers.logger import Logger
+from src.core.config import settings
+from src.helpers.logger import Logger
 
 logger = Logger(__name__)
 
@@ -46,6 +46,7 @@ wait_seconds = 1
 )
 async def check_database_connection(db_engine: AsyncEngine) -> bool:
     """Health check for database connection."""
+    session = None
     try:
         TempSession = async_sessionmaker(db_engine, expire_on_commit=False)
         session = TempSession()
@@ -54,6 +55,7 @@ async def check_database_connection(db_engine: AsyncEngine) -> bool:
         await session.close()
         return True
     except Exception as e:
-        await session.close()
+        if session is not None:
+            await session.close()
         logger.error(f"Database health check failed: {e}")
         return False

@@ -4,16 +4,16 @@ from uuid import UUID
 from fastapi import APIRouter
 from fastapi.params import Depends
 
-from helpers.auth import require_auth
-from helpers.model import APIResponse
-from models.sessions import (
+from src.helpers.auth import require_auth
+from src.helpers.model import APIResponse
+from src.models.sessions import (
     SessionCreate,
     SessionQuery,
     SessionRead,
     SessionStatus,
     SessionUpdate,
 )
-from repositories.sessions import SessionRepository
+from src.repositories.sessions import SessionRepository
 
 session_router: APIRouter = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 session_repository: SessionRepository = SessionRepository()

@@ -4,9 +4,9 @@ from uuid import UUID
 from fastapi import APIRouter
 from fastapi.params import Depends
 
-from helpers.auth import require_auth
-from helpers.model import APIResponse
-from models.forms import (
+from src.helpers.auth import require_auth
+from src.helpers.model import APIResponse
+from src.models.forms import (
     FormCreate,
     FormQuery,
     FormQuestionResponsesCreate,
@@ -32,7 +32,7 @@ from models.forms import (
     FormSectionsUpdate,
     FormUpdate,
 )
-from repositories.forms import (
+from src.repositories.forms import (
     FormQuestionRepository,
     FormQuestionResponseRepository,
     FormRepository,
@@ -66,7 +66,6 @@ async def create_form(
 
 @form_router.get("/", response_model=APIResponse[list[FormRead]], summary="List forms")
 async def list_forms(
-    _: Annotated[dict[str, Any], Depends(require_auth)],
     name: str | None = None,
     created_by: UUID | None = None,
     type: str | None = None,

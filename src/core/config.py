@@ -53,14 +53,22 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def POSTGRES_URI(self) -> MultiHostUrl:
-        return MultiHostUrl.build(
-            scheme="postgresql+psycopg",
-            username=self.POSTGRES_USER,
-            password=self.POSTGRES_PASSWORD,
-            host=self.POSTGRES_HOST,
-            port=self.POSTGRES_PORT,
-            path=self.POSTGRES_DB,
-        )
+        if self.POSTGRES_USER != "" and self.POSTGRES_PASSWORD != "":
+            return MultiHostUrl.build(
+                scheme="postgresql+psycopg",
+                username=self.POSTGRES_USER,
+                password=self.POSTGRES_PASSWORD,
+                host=self.POSTGRES_HOST,
+                port=self.POSTGRES_PORT,
+                path=self.POSTGRES_DB,
+            )
+        else:
+            return MultiHostUrl.build(
+                scheme="postgresql+psycopg",
+                host=self.POSTGRES_HOST,
+                port=self.POSTGRES_PORT,
+                path=self.POSTGRES_DB,
+            )
 
     class Config:
         env_file = ".env"

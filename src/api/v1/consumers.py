@@ -3,15 +3,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from helpers.auth import require_auth
-from helpers.model import APIResponse
-from models.consumers import (
+from src.helpers.auth import require_auth
+from src.helpers.model import APIResponse
+from src.models.consumers import (
     ConsumerCreate,
     ConsumerQuery,
     ConsumerRead,
     ConsumerUpdate,
 )
-from repositories.consumers import ConsumerRepository
+from src.repositories.consumers import ConsumerRepository
 
 consumer_router: APIRouter = APIRouter(prefix="/api/v1/consumers", tags=["consumers"])
 consumer_repository: ConsumerRepository = ConsumerRepository()

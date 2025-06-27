@@ -1,9 +1,9 @@
 from fastapi import APIRouter
 
-from api.v1.consumers import consumer_router
-from api.v1.forms import form_router
-from api.v1.providers import provider_router
-from api.v1.sessions import session_router
+from src.api.v1.consumers import consumer_router
+from src.api.v1.forms import form_router
+from src.api.v1.providers import provider_router
+from src.api.v1.sessions import session_router
 
 
 def setup_routes() -> APIRouter:

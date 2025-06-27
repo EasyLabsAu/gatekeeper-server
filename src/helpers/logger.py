@@ -4,7 +4,7 @@ from pathlib import Path
 
 from colorlog import ColoredFormatter
 
-from core.config import settings
+from src.core.config import settings
 
 
 def Logger(name: str = settings.PROJECT_NAME) -> logging.Logger:

@@ -8,7 +8,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
-from helpers.model import BaseModel
+from src.helpers.model import BaseModel
 
 
 class SessionStatus(str, Enum):
@@ -20,6 +20,7 @@ class SessionStatus(str, Enum):
 
 class Sessions(BaseModel, table=True):
     consumer_id: UUID = Field(foreign_key="consumers.id")
+    form_id: UUID = Field(foreign_key="forms.id")
     status: SessionStatus = Field(
         default=SessionStatus.PENDING,
         sa_column=Column(SAEnum(SessionStatus)),
@@ -46,6 +47,7 @@ class Sessions(BaseModel, table=True):
 
 class SessionCreate(SQLModel):
     consumer_id: UUID
+    form_id: UUID
     status: SessionStatus
     transcription: dict[str, Any]
     initiated_at: datetime
@@ -59,6 +61,7 @@ class SessionCreate(SQLModel):
 class SessionRead(SQLModel):
     id: UUID
     consumer_id: UUID
+    form_id: UUID
     status: SessionStatus
     files: list[dict] | None = None
     tags: list[str] | None = None
@@ -74,6 +77,7 @@ class SessionRead(SQLModel):
 
 class SessionUpdate(SQLModel):
     consumer_id: UUID | None = None
+    form_id: UUID | None = None
     status: SessionStatus | None = None
     transcription: dict[str, Any] | None = None
     initiated_at: datetime | None = None
@@ -84,6 +88,8 @@ class SessionUpdate(SQLModel):
 
 class SessionQuery(BaseModel):
     tags: list[str] | None = None
+    consumer_id: UUID | None = None
+    form_id: UUID | None = None
     status: SessionStatus | None = None
     initiated_at: datetime | None = None
     concluded_at: datetime | None = None
