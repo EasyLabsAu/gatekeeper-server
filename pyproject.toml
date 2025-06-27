@@ -5,7 +5,6 @@ description = "gatekeeper fastapi server"
 authors = [
     { name = "Monarch Maisuriya", email = "monarchmaisuriya@gmail.com" },
 ]
-readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 
@@ -25,7 +24,12 @@ dependencies = [
     "pyjwt<3.0.0,>=2.8.0",
     "greenlet>=3.2.3",
     "aiosmtplib>=4.0.1",
-    "colorlog>=6.9.0"
+    "colorlog>=6.9.0",
+    "python-socketio>=5.13.0",
+    "pylint>=3.3.7",
+    "nltk>=3.9.1",
+    "spacy>=3.8.2",
+    "pip>=25.1.1"
 ]
 
 [dependency-groups]
@@ -44,7 +48,7 @@ build-backend = "pdm.backend"
 
 [tool.pdm.scripts]
 seed = "scripts.seed:main"
-dev = "pdm run uvicorn src.server:app --reload --lifespan on"
+dev = "pdm run uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080"
 prod = "fastapi run src"
 migrate-up = "alembic upgrade head"
 migrate-down = "alembic downgrade -1"

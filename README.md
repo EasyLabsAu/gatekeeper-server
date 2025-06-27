@@ -24,7 +24,8 @@ A production-ready FastAPI project template with best practices for rapid develo
 │   ├── core/            # Core configurations
 │   ├── helpers/         # Helper utilities
 │   ├── models/          # Database models
-│   └── services/        # Business logic
+│   ├── workers/         # Background tasks
+│   └── repositorys/        # Business logic
 └── tests/               # Test files
 ```
 
@@ -50,7 +51,6 @@ cd gatekeeper-server
 ```bash
 pdm venv create 3.10
 pdm use -f .venv
-pdm venv activate
 pdm install
 ```
 
@@ -73,14 +73,14 @@ pdm run alembic upgrade head
 pdm run dev
 ```
 
-The API will be available at `http://localhost:8000`
+The API will be available at `http://localhost:8080`
 
 ### API Documentation
 
 Once the server is running, you can access:
 
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- Swagger UI: `http://localhost:8080/docs`
+- ReDoc: `http://localhost:8080/redoc`
 
 ## Development
 

@@ -4,8 +4,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from helpers.model import APIError, APIResponse
 from helpers.repository import BaseRepository
-from helpers.utils import APIError, APIResponse
 from models.consumers import (
     ConsumerCreate,
     ConsumerQuery,
@@ -15,7 +15,7 @@ from models.consumers import (
 )
 
 
-class ConsumerService(BaseRepository):
+class ConsumerRepository(BaseRepository):
     async def create(self, payload: ConsumerCreate) -> APIResponse[ConsumerRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
@@ -30,7 +30,7 @@ class ConsumerService(BaseRepository):
             db.add(consumer)
             await db.commit()
             await db.refresh(consumer)
-            data = ConsumerRead.model_validate(consumer).model_dump()
+            data = ConsumerRead.model_validate(consumer)
             return APIResponse[ConsumerRead](data=data)
         except IntegrityError as e:
             await db.rollback()
@@ -43,7 +43,7 @@ class ConsumerService(BaseRepository):
         query: ConsumerQuery,
         skip: int = 0,
         limit: int = 20,
-    ) -> APIResponse[ConsumerRead] | None:
+    ) -> APIResponse[list[ConsumerRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             filters = []
@@ -65,8 +65,8 @@ class ConsumerService(BaseRepository):
             result = await db.execute(statement)
             consumers = result.scalars().all()
             data = [ConsumerRead.model_validate(consumer) for consumer in consumers]
-            return APIResponse[ConsumerRead](
-                data=[item.model_dump() for item in data],
+            return APIResponse[list[ConsumerRead]](
+                data=data,
                 meta={"skip": skip, "limit": limit, "count": len(data)},
             )
         finally:
@@ -82,7 +82,7 @@ class ConsumerService(BaseRepository):
             consumer = result.scalar_one_or_none()
             if not consumer:
                 raise APIError(404, "Consumer not found")
-            data = ConsumerRead.model_validate(consumer).model_dump()
+            data = ConsumerRead.model_validate(consumer)
             return APIResponse[ConsumerRead](data=data)
         finally:
             await self.close_database_session()
@@ -120,7 +120,7 @@ class ConsumerService(BaseRepository):
             db.add(consumer)
             await db.commit()
             await db.refresh(consumer)
-            data = ConsumerRead.model_validate(consumer).model_dump()
+            data = ConsumerRead.model_validate(consumer)
             return APIResponse[ConsumerRead](data=data)
         except IntegrityError as e:
             await db.rollback()
@@ -139,7 +139,7 @@ class ConsumerService(BaseRepository):
             if not consumer:
                 raise APIError(404, "Consumer not found")
             if hasattr(Consumers, "soft_delete"):
-                Consumers(consumer).soft_delete()
+                consumer.soft_delete()
             else:
                 consumer.is_deleted = True  # fallback if soft_delete not implemented
             db.add(consumer)

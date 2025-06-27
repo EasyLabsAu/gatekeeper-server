@@ -4,26 +4,26 @@ from uuid import UUID
 from fastapi import APIRouter
 from fastapi.params import Depends
 
-from helpers.auth import public_route, require_auth
-from helpers.utils import APIResponse
+from helpers.auth import require_auth
+from helpers.model import APIResponse
 from models.sessions import (
     SessionCreate,
     SessionQuery,
     SessionRead,
+    SessionStatus,
     SessionUpdate,
 )
-from services.sessions import SessionService
+from repositories.sessions import SessionRepository
 
 session_router: APIRouter = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
-session_service: SessionService = SessionService()
+session_repository: SessionRepository = SessionRepository()
 
 
 @session_router.post(
     "/", response_model=APIResponse[SessionRead], summary="Create a new session"
 )
-@public_route
 async def create_session(payload: SessionCreate):
-    return await session_service.create(payload)
+    return await session_repository.create(payload)
 
 
 @session_router.get(
@@ -31,13 +31,13 @@ async def create_session(payload: SessionCreate):
 )
 async def list_sessions(
     _: Annotated[dict[str, Any], Depends(require_auth)],
-    status: str | None = None,
+    status: SessionStatus | None = None,
     tags: list[str] | None = None,
     skip: int = 0,
     limit: int = 20,
 ):
     query = SessionQuery(status=status, tags=tags)
-    return await session_service.find(query, skip=skip, limit=limit)
+    return await session_repository.find(query, skip=skip, limit=limit)
 
 
 @session_router.get(
@@ -48,7 +48,7 @@ async def list_sessions(
 async def get_session(
     session_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await session_service.get(session_id)
+    return await session_repository.get(session_id)
 
 
 @session_router.patch(
@@ -61,7 +61,7 @@ async def update_session(
     payload: SessionUpdate,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    return await session_service.update(session_id, payload)
+    return await session_repository.update(session_id, payload)
 
 
 @session_router.delete(
@@ -70,4 +70,4 @@ async def update_session(
 async def delete_session(
     session_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]
 ):
-    return await session_service.delete(session_id)
+    return await session_repository.delete(session_id)

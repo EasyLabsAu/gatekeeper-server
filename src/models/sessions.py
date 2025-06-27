@@ -1,20 +1,14 @@
-from __future__ import annotations
-
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import UUID
 
-from pydantic.config import ConfigDict
 from sqlalchemy import Column, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel
 
 from helpers.model import BaseModel
-
-if TYPE_CHECKING:
-    from models.forms import FormResponses
 
 
 class SessionStatus(str, Enum):
@@ -48,8 +42,6 @@ class Sessions(BaseModel, table=True):
     feedback: str | None = None
     rating: float | None = None
     meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
-    # Use string-based forward reference + proper back_populates name
-    form_responses: list[FormResponses] = Relationship(back_populates="session")
 
 
 class SessionCreate(SQLModel):
@@ -65,8 +57,6 @@ class SessionCreate(SQLModel):
 
 
 class SessionRead(SQLModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     consumer_id: UUID
     status: SessionStatus

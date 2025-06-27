@@ -3,15 +3,13 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic.config import ConfigDict
 from sqlalchemy import Column, Text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql.json import JSONB
-from sqlmodel import Field, Relationship
+from sqlmodel import Field
 from sqlmodel.main import SQLModel
 
 from helpers.model import BaseModel
-from models.sessions import Sessions
 
 
 # Enum to define different types of form fields that a user can interact with
@@ -26,19 +24,11 @@ class FormFieldTypes(str, Enum):
 
 # Main form container model
 class Forms(BaseModel, table=True):
-    __tablename__ = "forms"
-
     name: str  # Title or name of the form
     type: str | None = None  # Type of the form (e.g., "feedback", "survey", etc.)
     description: str | None = None  # Optional description of the form
     created_by: UUID = Field(foreign_key="providers.id")
     meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
-
-    # One form can have multiple sections
-    sections: list["FormSections"] = Relationship(back_populates="form")
-
-    # One form can receive many user responses
-    responses: list["FormResponses"] = Relationship(back_populates="form")
 
 
 class FormCreate(SQLModel):
@@ -49,8 +39,6 @@ class FormCreate(SQLModel):
 
 
 class FormRead(SQLModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     name: str
     description: str | None = None
@@ -66,40 +54,58 @@ class FormUpdate(SQLModel):
     description: str | None = None
     type: str | None = None
     created_by: UUID | None = None
-    concluded_at: datetime | None = None
     meta_data: dict[str, Any] | None = None
     active_at: datetime | None = None
 
 
 class FormQuery(BaseModel):
     name: str | None = None
-    description: str | None = None
     created_by: UUID | None = None
     type: str | None = None
 
 
 # A form is divided into one or more sections
 class FormSections(BaseModel, table=True):
-    __tablename__ = "form_sections"
-
     form_id: UUID = Field(foreign_key="forms.id")  # Reference to the parent form
     title: str  # Section title
     description: str | None = None  # Optional section description
     order: int  # Position of the section in the form
 
-    # Back-reference to the parent form
-    form: Forms = Relationship(back_populates="sections")
 
-    # One section can have multiple questions
-    questions: list["FormQuestions"] = Relationship(back_populates="section")
+class FormSectionsCreate(SQLModel):
+    form_id: UUID
+    title: str
+    description: str | None = None
+    order: int
+
+
+class FormSectionsRead(SQLModel):
+    id: UUID
+    title: str
+    description: str | None = None
+    order: int
+    form_id: UUID
+    meta_data: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime | None
+
+
+class FormSectionsUpdate(SQLModel):
+    title: str | None = None
+    form_id: UUID
+    description: str | None = None
+    order: int | None = None
+    meta_data: dict[str, Any] | None = None
+
+
+class FormSectionsQuery(BaseModel):
+    form_id: UUID
 
 
 # Each section contains one or more questions
 class FormQuestions(BaseModel, table=True):
-    __tablename__ = "form_questions"
-
     section_id: UUID = Field(
-        foreign_key="form_sections.id"
+        foreign_key="formsections.id"
     )  # Reference to the parent section
     label: str  # The question text shown to the user
     field_type: FormFieldTypes  # Type of the question (text, number, etc.)
@@ -113,67 +119,156 @@ class FormQuestions(BaseModel, table=True):
         description="Applicable for single/multiple choice fields",
     )
 
-    # Back-reference to the parent section
-    section: FormSections = Relationship(back_populates="questions")
+
+class FormQuestionsCreate(SQLModel):
+    section_id: UUID
+    label: str
+    field_type: FormFieldTypes
+    required: bool
+    order: int
+    options: list[str]
+
+
+class FormQuestionsRead(SQLModel):
+    id: UUID
+    section_id: UUID
+    label: str
+    field_type: FormFieldTypes
+    required: bool
+    options: list[str]
+    order: int
+    meta_data: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime | None
+
+
+class FormQuestionsUpdate(SQLModel):
+    section_id: UUID
+    label: str | None = None
+    field_type: FormFieldTypes | None = None
+    order: int | None = None
+    options: list[str] | None = None
+    required: bool | None = None
+    meta_data: dict[str, Any] | None = None
+
+
+class FormQuestionsQuery(BaseModel):
+    section_id: UUID | None = None
 
 
 # Stores one user's overall submission of a form
 class FormResponses(BaseModel, table=True):
-    __tablename__ = "form_responses"
-
     form_id: UUID = Field(foreign_key="forms.id")  # Reference to the original form
     session_id: UUID = Field(
         foreign_key="sessions.id"
     )  # Reference to the session this response belongs to
     submitted_at: str | None = None
 
-    # Back-reference to the form that was answered
-    form: Forms = Relationship(back_populates="responses")
 
-    # One form response consists of multiple section responses
-    section_responses: list["FormSectionResponses"] = Relationship(
-        back_populates="form_response"
-    )
+class FormResponsesCreate(SQLModel):
+    form_id: UUID
+    session_id: UUID
+    submitted_at: str | None = None
 
-    session: "Sessions" = Relationship(back_populates="form_responses")
+
+class FormResponsesRead(SQLModel):
+    id: UUID
+    form_id: UUID
+    session_id: UUID
+    submitted_at: str
+    meta_data: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime | None
+
+
+class FormResponsesUpdate(SQLModel):
+    form_id: UUID
+    session_id: UUID
+    submitted_at: str | None = None
+    meta_data: dict[str, Any] | None = None
+
+
+class FormResponsesQuery(BaseModel):
+    form_id: UUID | None = None
+    session_id: UUID | None = None
 
 
 # Stores user's answers for a specific section of a form
 class FormSectionResponses(BaseModel, table=True):
-    __tablename__ = "form_section_responses"
-
     response_id: UUID = Field(
-        foreign_key="form_responses.id"
+        foreign_key="formresponses.id"
     )  # Reference to overall form response
     section_id: UUID = Field(
-        foreign_key="form_sections.id"
+        foreign_key="formsections.id"  # This now correctly references the table name
     )  # Reference to the section answered
 
-    # Back-reference to the overall form response
-    form_response: FormResponses = Relationship(back_populates="section_responses")
 
-    # One section response includes multiple question responses
-    question_responses: list["FormQuestionResponses"] = Relationship(
-        back_populates="section_response"
-    )
+class FormSectionResponsesCreate(SQLModel):
+    response_id: UUID
+    section_id: UUID
+
+
+class FormSectionResponsesRead(SQLModel):
+    id: UUID
+    response_id: UUID
+    section_id: UUID
+    meta_data: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime | None
+
+
+class FormSectionResponsesUpdate(SQLModel):
+    response_id: UUID
+    section_id: UUID
+    meta_data: dict[str, Any] | None = None
+
+
+class FormSectionResponsesQuery(BaseModel):
+    response_id: UUID | None = None
+    section_id: UUID | None = None
 
 
 # Stores user's answer to a specific question in a section
 class FormQuestionResponses(BaseModel, table=True):
-    __tablename__ = "form_question_responses"
-
     section_response_id: UUID = Field(
-        foreign_key="form_section_responses.id"
+        foreign_key="formsectionresponses.id"
     )  # Which section this answer belongs to
     question_id: UUID = Field(
-        foreign_key="form_questions.id"
+        foreign_key="formquestions.id"  # This now correctly references the table name
     )  # Which question this is an answer to
 
     # User's actual answer (can be string, number, datetime, etc. — stored as JSON)
     answer: str
     # Timestamp when the answer was submitted
     submitted_at: str | None = None
-    # Back-reference to the parent section response
-    section_response: FormSectionResponses = Relationship(
-        back_populates="question_responses"
-    )
+
+
+class FormQuestionResponsesCreate(SQLModel):
+    section_response_id: UUID
+    question_id: UUID
+    answer: str
+    submitted_at: str | None = None
+
+
+class FormQuestionResponsesRead(SQLModel):
+    id: UUID
+    section_response_id: UUID
+    question_id: UUID
+    answer: str
+    submitted_at: UUID
+    meta_data: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime | None
+
+
+class FormQuestionResponsesUpdate(SQLModel):
+    section_response_id: UUID
+    question_id: UUID
+    answer: str
+    submitted_at: UUID
+    meta_data: dict[str, Any] | None = None
+
+
+class FormQuestionResponsesQuery(BaseModel):
+    section_response_id: UUID | None = None
+    question_id: UUID | None = None

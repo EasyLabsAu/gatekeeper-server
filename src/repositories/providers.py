@@ -17,10 +17,11 @@ from helpers.auth import (
     verify_password,
     verify_refresh_token,
 )
+from helpers.model import APIError, APIResponse
 from helpers.repository import BaseRepository
-from helpers.utils import APIError, APIResponse
 from models.providers import (
     ProviderAuthRead,
+    ProviderAuthTokens,
     ProviderCreate,
     ProviderInvalidate,
     ProviderManage,
@@ -34,7 +35,7 @@ from models.providers import (
 )
 
 
-class ProviderService(BaseRepository):
+class ProviderRepository(BaseRepository):
     async def create(self, payload: ProviderCreate) -> APIResponse[ProviderRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
@@ -53,7 +54,7 @@ class ProviderService(BaseRepository):
             db.add(provider)
             await db.commit()
             await db.refresh(provider)
-            data = ProviderRead.model_validate(provider).model_dump()
+            data = ProviderRead.model_validate(provider)
             return APIResponse[ProviderRead](data=data)
         except IntegrityError as e:
             await db.rollback()
@@ -67,7 +68,7 @@ class ProviderService(BaseRepository):
         skip: int = 0,
         limit: int = 20,
         exclude_deleted: bool = True,
-    ) -> APIResponse[ProviderRead] | None:
+    ) -> APIResponse[list[ProviderRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
             filters = []
@@ -89,8 +90,8 @@ class ProviderService(BaseRepository):
             providers = result.scalars().all()
 
             data = [ProviderRead.model_validate(provider) for provider in providers]
-            return APIResponse[ProviderRead](
-                data=[item.model_dump() for item in data],
+            return APIResponse[list[ProviderRead]](
+                data=data,
                 meta={"skip": skip, "limit": limit, "count": len(data)},
             )
         finally:
@@ -111,7 +112,7 @@ class ProviderService(BaseRepository):
             if not provider:
                 raise APIError(404, "Provider not found")
 
-            data = ProviderRead.model_validate(provider).model_dump()
+            data = ProviderRead.model_validate(provider)
             return APIResponse[ProviderRead](data=data)
         finally:
             await self.close_database_session()
@@ -155,7 +156,7 @@ class ProviderService(BaseRepository):
             db.add(provider)
             await db.commit()
             await db.refresh(provider)
-            data = ProviderRead.model_validate(provider).model_dump()
+            data = ProviderRead.model_validate(provider)
             return APIResponse[ProviderRead](data=data)
         except IntegrityError as e:
             await db.rollback()
@@ -176,7 +177,7 @@ class ProviderService(BaseRepository):
             if not provider:
                 raise APIError(404, "Provider not found")
 
-            Providers(provider).soft_delete()
+            provider.soft_delete()
             db.add(provider)
             await db.commit()
             return APIResponse(message="Provider soft-deleted")
@@ -206,13 +207,13 @@ class ProviderService(BaseRepository):
             await db.commit()
             await db.refresh(provider)
 
-            data = {
-                "auth": {
-                    "access_token": create_access_token(provider.id),
-                    "refresh_token": create_refresh_token(provider.id),
-                },
-                "provider": ProviderRead.model_validate(provider).model_dump(),
-            }
+            data = ProviderAuthRead(
+                auth=ProviderAuthTokens(
+                    access_token=create_access_token(provider.id),
+                    refresh_token=create_refresh_token(provider.id),
+                ),
+                provider=ProviderRead.model_validate(provider),
+            )
             return APIResponse[ProviderAuthRead](data=data)
         finally:
             await self.close_database_session()
@@ -241,13 +242,13 @@ class ProviderService(BaseRepository):
             if not provider:
                 raise APIError(404, "Provider not found")
 
-            data = {
-                "auth": {
-                    "access_token": access_token,
-                    "refresh_token": new_refresh_token,
-                },
-                "provider": ProviderRead.model_validate(provider).model_dump(),
-            }
+            data = ProviderAuthRead(
+                auth=ProviderAuthTokens(
+                    access_token=access_token,
+                    refresh_token=new_refresh_token,
+                ),
+                provider=ProviderRead.model_validate(provider),
+            )
             return APIResponse[ProviderAuthRead](data=data)
         finally:
             await self.close_database_session()
@@ -268,12 +269,16 @@ class ProviderService(BaseRepository):
     ) -> APIResponse | None:
         db: AsyncSession = await self.get_database_session()
         try:
+            print(payload)
             stmt = select(Providers).where(
                 Providers.email == payload.email,
                 Providers.is_deleted == False,  # noqa: E712
             )
             result = await db.execute(stmt)
             provider_or_none = result.scalar_one_or_none()
+
+            print(provider_or_none)
+
             if not provider_or_none:
                 raise APIError(404, "Provider not found")
 
