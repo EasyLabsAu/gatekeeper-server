@@ -82,7 +82,8 @@ class FormSections(BaseModel, table=True):
 
     form: "Forms" = Relationship(back_populates="sections")
     questions: list["FormQuestions"] = Relationship(
-        back_populates="section", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+        back_populates="section",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     responses: list["FormSectionResponses"] = Relationship(back_populates="section")
 
@@ -152,7 +153,7 @@ class FormQuestionsRead(SQLModel):
     label: str
     field_type: FormFieldTypes
     required: bool
-    options: list[str]
+    options: list[str] | None = None
     order: int
     created_at: datetime
     updated_at: datetime | None
