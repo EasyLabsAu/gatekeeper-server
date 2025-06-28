@@ -49,7 +49,7 @@ build-backend = "pdm.backend"
 [tool.pdm.scripts]
 seed = "src.scripts.seed:main"
 dev = "pdm run uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080"
-prod = "fastapi run src"
+prod = "pdm run uvicorn src.server:app --lifespan on --host 0.0.0.0 --port 8080 --workers 4"
 migrate-up = "alembic upgrade head"
 migrate-down = "alembic downgrade -1"
 make-migration = "alembic revision --autogenerate -m \"%(message)s\""
