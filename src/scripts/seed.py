@@ -17,6 +17,7 @@ provider_data = {
 
 form_data = {
     "name": "Paint Job Request Form",
+    "type": "survey",
     "description": "A form to collect details from homeowners about their paint job needs.",
 }
 
@@ -92,6 +93,7 @@ def main():
         # Create a sample form linked to the provider
         form = Forms(
             name=form_data["name"],
+            type=form_data["type"],
             description=form_data["description"],
             created_by=provider.id,
         )

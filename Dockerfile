@@ -32,7 +32,7 @@ RUN python -c "import toml, subprocess, sys; data = toml.load('pyproject.toml');
 COPY . .
 
 EXPOSE 8080
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app
 CMD ["sh", "-c", "alembic upgrade head && uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080"]
 
 # Stage 2: Builder Environment
@@ -83,5 +83,5 @@ COPY --from=builder /app/src /app/src
 
 EXPOSE 8080
 
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app
 CMD ["sh", "-c", "alembic upgrade head && uvicorn src.server:app --host 0.0.0.0 --port 8080"]

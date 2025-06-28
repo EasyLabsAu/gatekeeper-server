@@ -47,7 +47,7 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm.scripts]
-seed = "scripts.seed:main"
+seed = "src.scripts.seed:main"
 dev = "pdm run uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080"
 prod = "fastapi run src"
 migrate-up = "alembic upgrade head"
