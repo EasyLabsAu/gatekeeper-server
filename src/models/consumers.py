@@ -11,7 +11,7 @@ from src.helpers.model import BaseModel
 
 
 class Consumers(BaseModel, table=True):
-    email: EmailStr = Field(index=True, unique=True, max_length=320)
+    email: EmailStr | None = Field(index=True, unique=True, max_length=320)
     name: str = Field(max_length=100)
     phone_number: str | None = None
     address: str | None = None
@@ -22,7 +22,7 @@ class Consumers(BaseModel, table=True):
 
 
 class ConsumerCreate(SQLModel):
-    email: EmailStr
+    email: EmailStr | None = None
     name: str
     phone_number: str | None = None
     address: str | None = None
@@ -30,7 +30,7 @@ class ConsumerCreate(SQLModel):
 
 class ConsumerRead(SQLModel):
     id: UUID
-    email: EmailStr
+    email: EmailStr | None = None
     name: str
     phone_number: str | None = None
     address: str | None = None

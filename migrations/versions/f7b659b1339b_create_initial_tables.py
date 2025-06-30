@@ -1,8 +1,8 @@
 """create initial tables
 
-Revision ID: 10bd1a4a0c1d
+Revision ID: f7b659b1339b
 Revises: 
-Create Date: 2025-06-27 17:00:51.726241
+Create Date: 2025-06-30 18:11:00.955967
 
 """
 from typing import Sequence, Union  # noqa: F401, UP035
@@ -15,7 +15,7 @@ from sqlmodel import AutoString
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '10bd1a4a0c1d'
+revision: str = 'f7b659b1339b'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -30,7 +30,7 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.Column('deleted_at', sa.DateTime(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
-    sa.Column('email', sqlmodel.sql.sqltypes.AutoString(length=320), nullable=False),
+    sa.Column('email', sqlmodel.sql.sqltypes.AutoString(length=320), nullable=True),
     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=False),
     sa.Column('phone_number', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('address', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
