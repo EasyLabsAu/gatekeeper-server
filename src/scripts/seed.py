@@ -1,6 +1,7 @@
 from sqlmodel import Session, SQLModel, create_engine
 
 from src.core.config import settings
+from src.helpers.auth import hash_password
 from src.models.forms import FormFieldTypes, FormQuestions, Forms, FormSections
 from src.models.providers import ProviderAccess, Providers
 
@@ -8,9 +9,9 @@ from src.models.providers import ProviderAccess, Providers
 provider_data = {
     "email": "john@provider.com",
     "first_name": "John",
-    "last_name": "Doe",
-    "password": "john@provider.com",
-    "phone_number": "+1234567890",
+    "last_name": "Provider",
+    "password": hash_password("john@provider.com"),
+    "phone_number": "1234567890",
     "is_verified": True,
     "access": [ProviderAccess.READ_DATA, ProviderAccess.WRITE_DATA],
 }
