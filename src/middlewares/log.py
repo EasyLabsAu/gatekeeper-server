@@ -25,7 +25,10 @@ class LogRequests(BaseHTTPMiddleware):
 
         # Log request
         logger.info(
-            f"Incoming request | {request.method} {request.url.path} | Client IP: {client_ip}"
+            "Incoming request | %s %s | Client IP: %s",
+            request.method,
+            request.url.path,
+            client_ip,
         )
 
         try:
@@ -34,17 +37,23 @@ class LogRequests(BaseHTTPMiddleware):
 
             # Log response
             logger.info(
-                f"Request completed | {request.method} {request.url.path} | "
-                f"Status: {response.status_code} | Time: {process_time:.3f}s | "
-                f"Client IP: {client_ip}"
+                "Request completed | %s %s | Status: %d | Time: %.3fs | Client IP: %s",
+                request.method,
+                request.url.path,
+                response.status_code,
+                process_time,
+                client_ip,
             )
             return response
 
         except Exception as e:
             process_time = time.time() - start_time
             logger.error(
-                f"Request failed | {request.method} {request.url.path} | "
-                f"Error: {str(e)} | Time: {process_time:.3f}s | "
-                f"Client IP: {client_ip}"
+                "Request failed | %s %s | Error: %s | Time: %.3fs | Client IP: %s",
+                request.method,
+                request.url.path,
+                str(e),
+                process_time,
+                client_ip,
             )
             raise
