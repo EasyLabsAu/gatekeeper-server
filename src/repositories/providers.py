@@ -198,7 +198,6 @@ class ProviderRepository(BaseRepository):
 
             if not provider:
                 raise APIError(404, "Provider not found")
-
             if not verify_password(payload.password, provider.password):
                 raise APIError(401, "Invalid credentials")
 
