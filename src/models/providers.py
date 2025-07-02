@@ -8,7 +8,7 @@ from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
-from helpers.model import BaseModel
+from src.helpers.model import BaseModel
 
 
 class ProviderAccess(str, Enum):

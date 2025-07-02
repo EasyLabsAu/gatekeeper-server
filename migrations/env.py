@@ -1,15 +1,29 @@
+# pylint: skip-file
+
 from logging.config import fileConfig
 
 from alembic import context
-from alembic.config import Config
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.sql.schema import MetaData
 from sqlmodel import SQLModel
 
+from src.core.config import settings
+from src.models import (
+    Consumers,
+    FormQuestionResponses,
+    FormQuestions,
+    FormResponses,
+    Forms,
+    FormSectionResponses,
+    FormSections,
+    Providers,
+    Sessions,
+)
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
-config: Config = context.config
+config = context.config  #
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -21,18 +35,6 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 
-from core.config import settings  # noqa
-from models import (  # noqa: E402, F401
-    Providers,
-    Sessions,
-    Consumers,
-    Forms,
-    FormSections,
-    FormQuestions,
-    FormResponses,
-    FormSectionResponses,
-    FormQuestionResponses,
-)
 
 target_metadata: MetaData = SQLModel.metadata
 

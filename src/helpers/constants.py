@@ -1,4 +1,4 @@
-from core.config import settings
+from src.core.config import settings
 
 PROVIDER_CREATED_EVENT = "provider_created"
 PROVIDER_DELETED_EVENT = "provider_deleted"

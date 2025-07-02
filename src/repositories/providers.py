@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from helpers.auth import (
+from src.helpers.auth import (
     create_access_token,
     create_one_time_password,
     create_refresh_token,
@@ -17,9 +17,9 @@ from helpers.auth import (
     verify_password,
     verify_refresh_token,
 )
-from helpers.model import APIError, APIResponse
-from helpers.repository import BaseRepository
-from models.providers import (
+from src.helpers.model import APIError, APIResponse
+from src.helpers.repository import BaseRepository
+from src.models.providers import (
     ProviderAuthRead,
     ProviderAuthTokens,
     ProviderCreate,
@@ -198,7 +198,6 @@ class ProviderRepository(BaseRepository):
 
             if not provider:
                 raise APIError(404, "Provider not found")
-
             if not verify_password(payload.password, provider.password):
                 raise APIError(401, "Invalid credentials")
 

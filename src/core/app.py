@@ -5,11 +5,11 @@ from typing import Any
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.config import settings
-from core.database import check_database_connection, engine
-from helpers.constants import CORS_CONFIGS
-from helpers.logger import Logger
-from middlewares.log import LogRequests
+from src.core.config import settings
+from src.core.database import check_database_connection, engine
+from src.helpers.constants import CORS_CONFIGS
+from src.helpers.logger import Logger
+from src.middlewares.log import LogRequests
 
 logger = Logger(__name__)
 
@@ -49,6 +49,7 @@ class App:
 
     @asynccontextmanager
     async def _default_lifespan(self, app: FastAPI) -> AsyncGenerator[None, None]:
+        print(f"Connecting to database at {settings.POSTGRES_URI}")
         if not await check_database_connection(engine):
             raise RuntimeError("Database connection failed after retries")
 

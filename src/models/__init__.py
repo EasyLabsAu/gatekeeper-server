@@ -1,5 +1,5 @@
-from models.consumers import Consumers
-from models.forms import (
+from src.models.consumers import Consumers
+from src.models.forms import (
     FormQuestionResponses,
     FormQuestions,
     FormResponses,
@@ -7,8 +7,8 @@ from models.forms import (
     FormSectionResponses,
     FormSections,
 )
-from models.providers import Providers
-from models.sessions import Sessions
+from src.models.providers import Providers
+from src.models.sessions import Sessions
 
 __all__: list[str] = [
     "Providers",

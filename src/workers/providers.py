@@ -1,6 +1,6 @@
-from helpers.logger import Logger
-from models.providers import ProviderManage, ProviderManageAction
-from repositories.providers import ProviderRepository
+from src.helpers.logger import Logger
+from src.models.providers import ProviderManage, ProviderManageAction
+from src.repositories.providers import ProviderRepository
 
 logger = Logger(__name__)
 

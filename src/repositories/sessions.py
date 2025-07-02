@@ -4,9 +4,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from helpers.model import APIError, APIResponse
-from helpers.repository import BaseRepository
-from models.sessions import (
+from src.helpers.model import APIError, APIResponse
+from src.helpers.repository import BaseRepository
+from src.models.sessions import (
     SessionCreate,
     SessionQuery,
     SessionRead,

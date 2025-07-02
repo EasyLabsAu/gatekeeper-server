@@ -3,11 +3,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter
 from fastapi.params import Depends
 
-from helpers.auth import require_auth
-from helpers.constants import PROVIDER_CREATED_EVENT
-from helpers.events import events
-from helpers.model import APIResponse
-from models.providers import (
+from src.helpers.auth import require_auth
+from src.helpers.constants import PROVIDER_CREATED_EVENT
+from src.helpers.events import events
+from src.helpers.model import APIResponse
+from src.models.providers import (
     ProviderAuthRead,
     ProviderCreate,
     ProviderInvalidate,
@@ -19,7 +19,7 @@ from models.providers import (
     ProviderUpdate,
     ProviderValidate,
 )
-from repositories.providers import ProviderRepository
+from src.repositories.providers import ProviderRepository
 
 provider_router: APIRouter = APIRouter(prefix="/api/v1/providers", tags=["providers"])
 provider_repository: ProviderRepository = ProviderRepository()

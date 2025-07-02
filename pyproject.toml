@@ -24,7 +24,6 @@ dependencies = [
     "pyjwt<3.0.0,>=2.8.0",
     "greenlet>=3.2.3",
     "aiosmtplib>=4.0.1",
-    "colorlog>=6.9.0",
     "python-socketio>=5.13.0",
     "pylint>=3.3.7",
     "nltk>=3.9.1",
@@ -47,9 +46,9 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm.scripts]
-seed = "scripts.seed:main"
-dev = "pdm run uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080"
-prod = "fastapi run src"
+seed = "src.scripts.seed:main"
+dev = "pdm run uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080 --log-level debug"
+prod = "pdm run uvicorn src.server:app --lifespan on --host 0.0.0.0 --port 8080 --workers 4 --log-level info" 
 migrate-up = "alembic upgrade head"
 migrate-down = "alembic downgrade -1"
 make-migration = "alembic revision --autogenerate -m \"%(message)s\""

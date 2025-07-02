@@ -8,9 +8,10 @@ from fastapi import Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from passlib.context import CryptContext
+from passlib.exc import UnknownHashError
 
-from core.config import settings
-from helpers.model import APIError
+from src.core.config import settings
+from src.helpers.model import APIError
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 1
@@ -32,7 +33,10 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except UnknownHashError as e:
+        raise APIError(400, "Invalid password hash format") from e
 
 
 def create_access_token(

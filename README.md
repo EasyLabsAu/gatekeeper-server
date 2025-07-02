@@ -4,14 +4,14 @@ A production-ready FastAPI project template with best practices for rapid develo
 
 ## Features
 
-- 🚀 FastAPI for high-performance API development
-- 🔐 User authentication and authorization
-- 📦 SQLAlchemy, SQLModel, and Alembic for database management
-- 🎯 Repository pattern for clean architecture
-- 🛠️ PDM for dependency management
-- 📝 Logging setup with proper error handling
-- 🔍 API versioning
-- 🧪 Testing setup (ready for your tests)
+- FastAPI for high-performance API development
+- User authentication and authorization
+- SQLAlchemy, SQLModel, and Alembic for database management
+- Repository pattern for clean architecture
+- PDM for dependency management
+- Logging setup with proper error handling
+- API versioning
+- Testing setup (ready for your tests)
 
 ## Project Structure
 
@@ -19,13 +19,13 @@ A production-ready FastAPI project template with best practices for rapid develo
 ├── migrations/          # Database migrations
 ├── scripts/             # Utility scripts
 ├── src/                 # Source code
-│   ├── api/             # API routes and endpoints
-│   ├── base/            # Base classes and interfaces
+│   ├── api/             # API routes, endpoints and business logic
 │   ├── core/            # Core configurations
 │   ├── helpers/         # Helper utilities
 │   ├── models/          # Database models
-│   ├── workers/         # Background tasks
-│   └── repositorys/        # Business logic
+│   ├── middlewares/     # API middlewares
+│   ├── repositories/    # Data layer and business logic
+│   └── workers/         # Background tasks
 └── tests/               # Test files
 ```
 
@@ -36,8 +36,9 @@ A production-ready FastAPI project template with best practices for rapid develo
 - Python 3.10 or higher
 - PDM package manager
 - PostgreSQL
+- Docker (optional)
 
-### Installation
+### Installation & Usage
 
 1. Clone the repository:
 
@@ -50,7 +51,7 @@ cd gatekeeper-server
 
 ```bash
 pdm venv create 3.10
-pdm use -f .venv
+pdm use -f .venv # Optional
 pdm install
 ```
 
@@ -75,6 +76,31 @@ pdm run dev
 
 The API will be available at `http://localhost:8080`
 
+### Containerization & Automation
+
+```bash
+./orchestrate.sh --action=start --env=development
+./orchestrate.sh --action=start --env=production
+```
+
+#### Stop all services
+
+```bash
+./orchestrate.sh --action=stop --env=development
+```
+
+#### Restart all services
+
+```bash
+./orchestrate.sh --action=restart --env=development
+```
+
+#### Remove all containers, networks, and volumes
+
+```bash
+./orchestrate.sh --action=remove --env=development
+```
+
 ### API Documentation
 
 Once the server is running, you can access:
@@ -82,15 +108,31 @@ Once the server is running, you can access:
 - Swagger UI: `http://localhost:8080/docs`
 - ReDoc: `http://localhost:8080/redoc`
 
-## Development
+### Development
 
-### Creating New Migrations
+#### Creating New Migrations
 
 ```bash
 pdm run alembic revision -m "your migration description"
 ```
 
-### Running Tests
+or
+
+```bash
+pdm run make-migration -m "your migration description"
+```
+
+#### Executing Migrations
+
+```bash
+pdm run migrate-up
+```
+
+```bash
+pdm run migrate-down
+```
+
+#### Running Tests
 
 ```bash
 pdm run test

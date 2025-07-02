@@ -4,9 +4,9 @@ from uuid import UUID
 from fastapi import APIRouter
 from fastapi.params import Depends
 
-from helpers.auth import require_auth
-from helpers.model import APIResponse
-from models.forms import (
+from src.helpers.auth import require_auth
+from src.helpers.model import APIResponse
+from src.models.forms import (
     FormCreate,
     FormQuery,
     FormQuestionResponsesCreate,
@@ -32,7 +32,7 @@ from models.forms import (
     FormSectionsUpdate,
     FormUpdate,
 )
-from repositories.forms import (
+from src.repositories.forms import (
     FormQuestionRepository,
     FormQuestionResponseRepository,
     FormRepository,
@@ -66,7 +66,6 @@ async def create_form(
 
 @form_router.get("/", response_model=APIResponse[list[FormRead]], summary="List forms")
 async def list_forms(
-    _: Annotated[dict[str, Any], Depends(require_auth)],
     name: str | None = None,
     created_by: UUID | None = None,
     type: str | None = None,
@@ -82,7 +81,7 @@ async def list_forms(
     response_model=APIResponse[FormRead],
     summary="Get form by ID",
 )
-async def get_form(form_id: UUID, _: Annotated[dict[str, Any], Depends(require_auth)]):
+async def get_form(form_id: UUID):
     return await form_repository.get(form_id)
 
 
@@ -109,29 +108,25 @@ async def delete_form(
 
 
 @form_router.post(
-    "/{form_id}/sections",
+    "/sections",
     response_model=APIResponse[FormSectionsRead],
     summary="Create section for a form",
 )
 async def create_section(
-    form_id: UUID,
     payload: FormSectionsCreate,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    payload_dict = payload.model_dump()
-    payload_dict["form_id"] = form_id
-    payload_obj = FormSectionsCreate(**payload_dict)
-    return await section_repository.create(payload_obj)
+    return await section_repository.create(payload)
 
 
 @form_router.get(
-    "/{form_id}/sections",
+    "/sections",
     response_model=APIResponse[list[FormSectionsRead]],
     summary="List sections for a form",
 )
 async def list_sections(
-    form_id: UUID,
     _: Annotated[dict[str, Any], Depends(require_auth)],
+    form_id: UUID,
     skip: int = 0,
     limit: int = 20,
 ):
@@ -174,19 +169,15 @@ async def delete_section(
 
 
 @form_router.post(
-    "/sections/{section_id}/questions",
+    "/sections/questions",
     response_model=APIResponse[FormQuestionsRead],
     summary="Create question for a section",
 )
 async def create_question(
-    section_id: UUID,
     payload: FormQuestionsCreate,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    payload_dict = payload.model_dump()
-    payload_dict["section_id"] = section_id
-    payload_obj = FormQuestionsCreate(**payload_dict)
-    return await question_repository.create(payload_obj)
+    return await question_repository.create(payload)
 
 
 @form_router.get(
@@ -241,19 +232,15 @@ async def delete_question(
 
 
 @form_router.post(
-    "/{form_id}/responses",
+    "/responses",
     response_model=APIResponse[FormResponsesRead],
     summary="Create response for a form",
 )
 async def create_response(
-    form_id: UUID,
     payload: FormResponsesCreate,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    payload_dict = payload.model_dump()
-    payload_dict["form_id"] = form_id
-    payload_obj = FormResponsesCreate(**payload_dict)
-    return await response_repository.create(payload_obj)
+    return await response_repository.create(payload)
 
 
 @form_router.get(
@@ -312,19 +299,15 @@ async def delete_response(
 
 
 @form_router.post(
-    "/responses/{response_id}/section-responses",
+    "/responses/section-responses",
     response_model=APIResponse[FormSectionResponsesRead],
     summary="Create section response for a response",
 )
 async def create_section_response(
-    response_id: UUID,
     payload: FormSectionResponsesCreate,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    payload_dict = payload.model_dump()
-    payload_dict["response_id"] = response_id
-    payload_obj = FormSectionResponsesCreate(**payload_dict)
-    return await section_response_repository.create(payload_obj)
+    return await section_response_repository.create(payload)
 
 
 @form_router.get(
@@ -381,19 +364,15 @@ async def delete_section_response(
 
 
 @form_router.post(
-    "/section-responses/{section_response_id}/question-responses",
+    "/section-responses/question-responses",
     response_model=APIResponse[FormQuestionResponsesRead],
     summary="Create question response for a section response",
 )
 async def create_question_response(
-    section_response_id: UUID,
     payload: FormQuestionResponsesCreate,
     _: Annotated[dict[str, Any], Depends(require_auth)],
 ):
-    payload_dict = payload.model_dump()
-    payload_dict["section_response_id"] = section_response_id
-    payload_obj = FormQuestionResponsesCreate(**payload_dict)
-    return await question_response_repository.create(payload_obj)
+    return await question_response_repository.create(payload)
 
 
 @form_router.get(
