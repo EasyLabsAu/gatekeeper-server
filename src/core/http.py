@@ -16,7 +16,7 @@ logger = Logger(__name__)
 MiddlewareSpec = tuple[type[Any], dict[str, Any]]
 
 
-class HTTP_SERVER:
+class HTTP_GATEWAY:
     def __init__(
         self,
         *,

@@ -12,7 +12,7 @@ logger = Logger(__name__)
 MiddlewareSpec = tuple[type[Any], dict[str, Any]]
 
 
-class SOCKET_SERVER:
+class SOCKET_GATEWAY:
     def __init__(
         self,
         *,

@@ -5,11 +5,11 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 
-from src.api import setup_http_routes
+from src.api import setup_http_routes, setup_websocket_events
 from src.core.config import settings
 from src.core.database import check_database_connection, engine
-from src.core.http import HTTP_SERVER
-from src.core.socket import SOCKET_SERVER
+from src.core.http import HTTP_GATEWAY
+from src.core.socket import SOCKET_GATEWAY
 from src.helpers.constants import (
     HTTP_API_PREFIX,
     PROVIDER_CREATED_EVENT,
@@ -25,7 +25,7 @@ logger = Logger(__name__)
 
 def create_app() -> FastAPI:
     @asynccontextmanager
-    async def setup_lifespan(server: FastAPI) -> AsyncGenerator[None, None]:
+    async def setup_lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         logger.info(
             "Starting %s, version %s in %s environment with database at %s",
             settings.PROJECT_NAME,
@@ -45,19 +45,24 @@ def create_app() -> FastAPI:
         logger.info("Lifespan shutdown: Stopping worker")
         await events.stop_worker()
 
-    http_server = HTTP_SERVER(
+    http_gateway = HTTP_GATEWAY(
         router=setup_http_routes(HTTP_API_PREFIX),
         lifespan=setup_lifespan,
     )
-    http_app = http_server.app()
+    http_app = http_gateway.app()
     logger.info("HTTP API GATEWAY at %s", HTTP_API_PREFIX)
-    socket_server = SOCKET_SERVER()
-    socket_app = socket_server.app()
+
+    socket_gateway = SOCKET_GATEWAY()
+    socket_app = socket_gateway.app()
+    socket_server = socket_gateway.server()
+
     http_app.mount(WEBSOCKET_API_PREFIX, socket_app)
+
     logger.info("WEBSOCKET API GATEWAY at %s", WEBSOCKET_API_PREFIX)
+    setup_websocket_events(socket_server)
 
     @http_app.exception_handler(APIError)
-    async def api_error_handler(request: Request, exc: APIError):
+    async def api_error_handler(_: Request, exc: APIError):
         return exc.response()
 
     @http_app.get(

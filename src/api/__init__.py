@@ -1,14 +1,15 @@
 from fastapi import APIRouter
+from socketio import AsyncServer
 
 from src.api.rest.consumers import consumer_router
 from src.api.rest.forms import form_router
 from src.api.rest.providers import provider_router
 from src.api.rest.sessions import session_router
-from src.api.websocket import chat  # noqa: F401
+from src.api.websocket.chat import chat_events
+from src.api.websocket.gateway import gateway_events
 
 
-def setup_http_routes(prefix: str) -> APIRouter:
-    """Configure and return the main API router with all routes."""
+def setup_http_routes(prefix: str):
     router = APIRouter(prefix=prefix)
     router.include_router(provider_router)
     router.include_router(consumer_router)
@@ -16,3 +17,8 @@ def setup_http_routes(prefix: str) -> APIRouter:
     router.include_router(form_router)
 
     return router
+
+
+def setup_websocket_events(sio: AsyncServer):
+    gateway_events(sio)
+    chat_events(sio)
