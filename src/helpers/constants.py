@@ -11,11 +11,11 @@ HTTP_API_PREFIX = "/api/rest"
 WEBSOCKET_API_PREFIX = "/api/websocket"
 
 
-cors_origins: list[str] = (
-    settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else ["*"]
+cors_origins: list[str] | str = (
+    "*" if settings.CORS_ORIGINS == "*" else settings.CORS_ORIGINS.split(",")
 )
 
-CORS_CONFIGS: dict[str, bool | list[str]] = {
+CORS_CONFIGS: dict[str, bool | list[str] | str] = {
     "allow_origins": cors_origins,
     "allow_credentials": True,
     "allow_methods": ["*"],

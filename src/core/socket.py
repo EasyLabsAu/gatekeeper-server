@@ -4,7 +4,6 @@ from typing import Any
 import socketio
 from socketio import ASGIApp, AsyncServer
 
-from src.core.config import settings
 from src.helpers.constants import WEBSOCKET_API_PREFIX, cors_origins
 from src.helpers.logger import Logger
 
@@ -19,12 +18,11 @@ class SOCKET_SERVER:
         *,
         middlewares: Sequence[MiddlewareSpec] | None = None,
     ):
+        print(cors_origins)
         self.sio = socketio.AsyncServer(
             async_mode="asgi",
             cors_credentials=True,
-            cors_allowed_origins=settings.CORS_ORIGINS
-            if settings.CORS_ORIGINS == "*"
-            else cors_origins,
+            cors_allowed_origins=cors_origins,
             logger=True,
             engineio_logger=True,
         )
