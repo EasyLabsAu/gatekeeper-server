@@ -16,7 +16,7 @@ logger = Logger(__name__)
 MiddlewareSpec = tuple[type[Any], dict[str, Any]]
 
 
-class App:
+class HTTP_GATEWAY:
     def __init__(
         self,
         *,
@@ -25,7 +25,7 @@ class App:
         middlewares: Sequence[MiddlewareSpec] | None = None,
     ):
         self.logger = Logger(__name__)
-        self.app = FastAPI(
+        self.http = FastAPI(
             title=settings.PROJECT_NAME,
             version=settings.VERSION,
             lifespan_mode="on",
@@ -33,7 +33,7 @@ class App:
         )
 
         if router:
-            self.app.include_router(router)
+            self.http.include_router(router)
 
         self._configure_middlewares(middlewares)
 
@@ -45,10 +45,10 @@ class App:
             ]
 
         for middleware_class, config in middlewares:
-            self.app.add_middleware(middleware_class, **config)  # type: ignore[arg-type]
+            self.http.add_middleware(middleware_class, **config)  # type: ignore[arg-type]
 
     @asynccontextmanager
-    async def _default_lifespan(self, app: FastAPI) -> AsyncGenerator[None, None]:
+    async def _default_lifespan(self, _: FastAPI) -> AsyncGenerator[None, None]:
         print(f"Connecting to database at {settings.POSTGRES_URI}")
         if not await check_database_connection(engine):
             raise RuntimeError("Database connection failed after retries")
@@ -56,5 +56,5 @@ class App:
         self.logger.info("Database connection established successfully")
         yield
 
-    def get_app(self) -> FastAPI:
-        return self.app
+    def app(self) -> FastAPI:
+        return self.http

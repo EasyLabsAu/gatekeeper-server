@@ -7,7 +7,7 @@ from spacy.language import Language
 
 from src.services.chatbot.helpers import load_spacy_model
 
-INTENTS_FILE = Path(__file__).parent.parent / "data" / "intents.json"
+INTENTS_FILE = Path(__file__).parent / "data" / "intents.json"
 EMBEDDINGS_FILE = Path(__file__).parent / "data" / "intents_embeddings.pkl"
 ANNOY_INDEX_FILE = Path(__file__).parent / "data" / "intents_annoy_index.ann"
 

@@ -28,6 +28,7 @@ COPY pyproject.toml .
 # Install dependencies from pyproject.toml (including dev and test)
 RUN pip install toml
 RUN python -c "import toml, subprocess, sys; data = toml.load('pyproject.toml'); deps = data['project']['dependencies'] + data['dependency-groups']['dev'] + data['dependency-groups']['test']; [subprocess.check_call([sys.executable, '-m', 'pip', 'install', d]) for d in deps]"
+RUN python -m spacy download en_core_web_lg
 
 COPY . .
 
@@ -65,7 +66,7 @@ COPY pyproject.toml .
 # Install production dependencies from pyproject.toml
 RUN pip install toml
 RUN python -c "import toml, subprocess, sys; data = toml.load('pyproject.toml'); deps = data['project']['dependencies']; [subprocess.check_call([sys.executable, '-m', 'pip', 'install', d]) for d in deps]"
-
+RUN python -m spacy download en_core_web_lg
 COPY src /app/src
 
 # Stage 3: Production Environment

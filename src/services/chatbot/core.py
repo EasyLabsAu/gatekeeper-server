@@ -37,9 +37,11 @@ class IntentRecognizer:
 
         self.num_trees = num_trees
 
-        self.intents_file = Path(__file__).parent / "intents.json"
-        self.embeddings_file = Path(__file__).parent / "intents_embeddings.pkl"
-        self.annoy_index_file = Path(__file__).parent / "intents_annoy_index.ann"
+        self.intents_file = Path(__file__).parent / "data" / "intents.json"
+        self.embeddings_file = Path(__file__).parent / "data" / "intents_embeddings.pkl"
+        self.annoy_index_file = (
+            Path(__file__).parent / "data" / "intents_annoy_index.ann"
+        )
 
         self._load_assets()
 

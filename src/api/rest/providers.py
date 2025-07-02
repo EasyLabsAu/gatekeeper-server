@@ -21,7 +21,7 @@ from src.models.providers import (
 )
 from src.repositories.providers import ProviderRepository
 
-provider_router: APIRouter = APIRouter(prefix="/api/v1/providers", tags=["providers"])
+provider_router: APIRouter = APIRouter(prefix="/providers", tags=["providers"])
 provider_repository: ProviderRepository = ProviderRepository()
 
 

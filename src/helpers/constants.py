@@ -7,12 +7,12 @@ PROVIDER_VERIFIED_EVENT = "provider_verified"
 PROVIDER_PASSWORD_RESET_EVENT = "provider_password_reset"
 PROVIDER_ACCOUNT_RECOVERY_EVENT = "provider_account_recovery"
 
-cors_origins: list[str] = (
-    settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else ["*"]
-)
+HTTP_API_PREFIX = "/api/rest"
+WEBSOCKET_API_PREFIX = "/api/websocket"
 
-CORS_CONFIGS: dict[str, bool | list[str]] = {
-    "allow_origins": cors_origins,
+
+CORS_CONFIGS: dict[str, bool | list[str] | str] = {
+    "allow_origins": settings.CORS_ORIGINS,
     "allow_credentials": True,
     "allow_methods": ["*"],
     "allow_headers": ["*"],
