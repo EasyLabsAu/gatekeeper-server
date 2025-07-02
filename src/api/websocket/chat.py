@@ -1,3 +1,5 @@
+# pyright: reportOptionalCall=false
+
 import json
 
 from socketio import AsyncServer
@@ -13,25 +15,29 @@ logger = Logger(__name__)
 
 
 def chat_events(sio: AsyncServer):
-    @sio.on("chat_message")
-    async def on_chat_message(sid, data):
-        logger.info("Message from %s: %s", sid, data)
+    if sio is not None and hasattr(sio, "on"):
 
-        try:
-            parsed_data = json.loads(data)
-            user_message = parsed_data.get("message")
+        @sio.on("chat_message")
+        async def on_chat_message(sid, data):
+            logger.info("Message from %s: %s", sid, data)
 
-            if user_message:
-                chatbot = Chatbot(session_id=sid)
-                bot_response = chatbot.get_response(user_message)
+            try:
+                parsed_data = json.loads(data)
+                user_message = parsed_data.get("message")
 
-                await sio.emit(
-                    "chat_message",
-                    {"sender": "bot", "message": bot_response},
-                    room=sid,
-                )
-            else:
-                logger.warning("Received empty 'message' from %s. Data: %s", sid, data)
+                if user_message:
+                    chatbot = Chatbot(session_id=sid)
+                    bot_response = chatbot.get_response(user_message)
 
-        except json.JSONDecodeError:
-            logger.error("Failed to parse JSON from %s. Raw data: %s", sid, data)
+                    await sio.emit(
+                        "chat_message",
+                        {"sender": "bot", "message": bot_response},
+                        room=sid,
+                    )
+                else:
+                    logger.warning(
+                        "Received empty 'message' from %s. Data: %s", sid, data
+                    )
+
+            except json.JSONDecodeError:
+                logger.error("Failed to parse JSON from %s. Raw data: %s", sid, data)
