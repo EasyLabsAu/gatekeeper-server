@@ -13,7 +13,7 @@ from src.models.consumers import (
 )
 from src.repositories.consumers import ConsumerRepository
 
-consumer_router: APIRouter = APIRouter(prefix="/api/v1/consumers", tags=["consumers"])
+consumer_router: APIRouter = APIRouter(prefix="/consumers", tags=["consumers"])
 consumer_repository: ConsumerRepository = ConsumerRepository()
 
 

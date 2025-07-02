@@ -1,3 +1,3 @@
-from src.server import app, server
+from src.server import app
 
-__all__ = ["app", "server"]
+__all__ = ["app"]
