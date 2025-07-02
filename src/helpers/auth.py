@@ -89,12 +89,12 @@ def verify_access_token(token: str) -> dict[str, Any]:
 
         return payload
 
-    except ExpiredSignatureError:
-        raise ValueError(401, "Access token has expired")
-    except InvalidTokenError:
-        raise ValueError(401, "Invalid or malformed access token")
-    except Exception as e:
-        raise ValueError(401, f"Token validation failed: {str(e)}")
+    except ExpiredSignatureError as exc:
+        raise ValueError(401, "Access token has expired") from exc
+    except InvalidTokenError as exc:
+        raise ValueError(401, "Invalid or malformed access token") from exc
+    except Exception as exc:
+        raise ValueError(401, f"Token validation failed: {str(exc)}") from exc
 
 
 def verify_refresh_token(token: str) -> dict[str, Any]:
@@ -114,8 +114,8 @@ def verify_refresh_token(token: str) -> dict[str, Any]:
             raise APIError(401, "Refresh token expired (max lifetime)")
 
         return payload
-    except InvalidTokenError:
-        raise APIError(401, "Invalid or expired refresh token")
+    except InvalidTokenError as exc:
+        raise APIError(401, "Invalid or expired refresh token") from exc
 
 
 def rotate_refresh_token(old_token: str) -> tuple[str, str]:
@@ -142,5 +142,5 @@ def require_auth(token: HTTPAuthorizationCredentials = Security(security)):
 
     try:
         return verify_access_token(raw_token)
-    except Exception as e:
-        raise APIError(401, f"Unauthorized: {str(e)}")
+    except Exception as exc:
+        raise APIError(401, f"Unauthorized: {str(exc)}") from exc

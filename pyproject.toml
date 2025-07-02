@@ -28,13 +28,16 @@ dependencies = [
     "pylint>=3.3.7",
     "nltk>=3.9.1",
     "spacy>=3.8.2",
-    "pip>=25.1.1"
+    "pip>=25.1.1",
+    "fuzzywuzzy>=0.18.0",
+    "python-Levenshtein>=0.27.1",
+    "annoy>=1.17.3"
 ]
 
 [dependency-groups]
 dev = [
     "ruff>=0.11.13",
-    "pyrefly>=0.20.2",
+    "pylint>=3.3.7",
 ]
 test = [
     "pytest>=8.4.1",
@@ -55,6 +58,7 @@ make-migration = "alembic revision --autogenerate -m \"%(message)s\""
 lint = "ruff check ."
 lint-fix = "ruff check . --fix"
 format = "ruff format ."
+test = "pytest"
 
 [tool.ruff]
 target-version = "py310"
@@ -71,6 +75,9 @@ keep-runtime-typing = true
 distribution = true
 package-dir = {"" = "src"}
 
-[tool.pyrefly]
-project-includes = ["**/*"]
-project-excludes = ["**/*venv/**/*"]
+[tool.pylint]
+disable = [
+    "C0114", # Missing module docstring
+    "C0115", # Missing class docstring
+    "C0116", # Missing function or method docstring
+]
