@@ -56,5 +56,5 @@ class HTTP_SERVER:
         self.logger.info("Database connection established successfully")
         yield
 
-    def gateway(self) -> FastAPI:
+    def app(self) -> FastAPI:
         return self.http

@@ -49,14 +49,18 @@ def create_app() -> FastAPI:
         router=setup_http_routes(HTTP_API_PREFIX),
         lifespan=setup_lifespan,
     )
-    http_gateway = http_server.gateway()
+    http_app = http_server.app()
     logger.info("HTTP API GATEWAY at %s", HTTP_API_PREFIX)
+    socket_server = SOCKET_SERVER()
+    socket_app = socket_server.app()
+    http_app.mount(WEBSOCKET_API_PREFIX, socket_app)
+    logger.info("WEBSOCKET API GATEWAY at %s", WEBSOCKET_API_PREFIX)
 
-    @http_gateway.exception_handler(APIError)
+    @http_app.exception_handler(APIError)
     async def api_error_handler(request: Request, exc: APIError):
         return exc.response()
 
-    @http_gateway.get(
+    @http_app.get(
         "/health",
         response_model=dict[str, Any],
         summary="Health Check",
@@ -72,10 +76,7 @@ def create_app() -> FastAPI:
             "environment": settings.ENV,
         }
 
-    socket_server = SOCKET_SERVER()
-    http_gateway.mount(WEBSOCKET_API_PREFIX, socket_server.gateway())
-    logger.info("WEBSOCKET API GATEWAY at %s", WEBSOCKET_API_PREFIX)
-    return http_gateway
+    return http_app
 
 
 app = create_app()
