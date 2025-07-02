@@ -27,11 +27,21 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def setup_lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         logger.info(
-            "Starting %s, version %s in %s environment with database at %s",
+            "Starting: %s, version: %s",
             settings.PROJECT_NAME,
             settings.VERSION,
+        )
+        logger.info(
+            "Environment: %s",
             settings.ENV,
+        )
+        logger.info(
+            "Database: %s",
             settings.POSTGRES_URI,
+        )
+        logger.info(
+            "CORS Origins: %s",
+            settings.CORS_ORIGINS,
         )
         if not await check_database_connection(engine):
             raise RuntimeError("Database connection failed after retries")

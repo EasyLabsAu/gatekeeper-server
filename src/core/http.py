@@ -48,7 +48,7 @@ class HTTP_GATEWAY:
             self.http.add_middleware(middleware_class, **config)  # type: ignore[arg-type]
 
     @asynccontextmanager
-    async def _default_lifespan(self, http: FastAPI) -> AsyncGenerator[None, None]:
+    async def _default_lifespan(self, _: FastAPI) -> AsyncGenerator[None, None]:
         print(f"Connecting to database at {settings.POSTGRES_URI}")
         if not await check_database_connection(engine):
             raise RuntimeError("Database connection failed after retries")

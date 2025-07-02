@@ -1,6 +1,4 @@
-from pydantic import (
-    computed_field,
-)
+from pydantic import computed_field, field_validator
 from pydantic_core import MultiHostUrl
 from pydantic_settings import BaseSettings
 
@@ -39,7 +37,16 @@ class Settings(BaseSettings):
     REDIS_DB: int = 0
 
     # CORS settings
-    CORS_ORIGINS: str = "*"  # Comma-separated list of allowed origins
+    CORS_ORIGINS: list[str] = []  # Comma-separated list of allowed origins
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def split_origins(cls, value: str | list[str] | None) -> list[str]:
+        if not value:
+            return ["*"]
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     # PostgreSQL settings
     POSTGRES_USER: str = ""

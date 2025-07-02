@@ -4,7 +4,7 @@ from typing import Any
 import socketio
 from socketio import ASGIApp, AsyncServer
 
-from src.helpers.constants import WEBSOCKET_API_PREFIX, cors_origins
+from src.helpers.constants import WEBSOCKET_API_PREFIX
 from src.helpers.logger import Logger
 
 logger = Logger(__name__)
@@ -18,11 +18,9 @@ class SOCKET_GATEWAY:
         *,
         middlewares: Sequence[MiddlewareSpec] | None = None,
     ):
-        print(cors_origins)
         self.sio = socketio.AsyncServer(
             async_mode="asgi",
-            cors_credentials=True,
-            cors_allowed_origins=cors_origins,
+            cors_allowed_origins=[],
             logger=True,
             engineio_logger=True,
         )
