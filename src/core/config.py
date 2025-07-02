@@ -70,6 +70,10 @@ class Settings(BaseSettings):
                 path=self.POSTGRES_DB,
             )
 
+    # Slack settings
+    SLACK_INFO_WEBHOOK: str = ""
+    SLACK_ERROR_WEBHOOK: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True
