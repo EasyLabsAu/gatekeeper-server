@@ -11,10 +11,10 @@ from src.services.chatbot.helpers import (
     EXIT_KEYWORDS,
     LEAD_CAPTURE_FLOW_TEMPLATE,
     ConversationFlow,
-    cache,
     extract_entities,
     extract_name,
     is_valid_email,
+    SessionManager,
 )
 
 
@@ -134,6 +134,7 @@ class IntentRecognizer:
 
 # Initialize IntentRecognizer
 intent_recognizer = IntentRecognizer()
+session_manager = SessionManager()
 
 # Assign extractor and validation functions to the lead capture flow template
 # Pass the nlp model from intent_recognizer to extract_name
@@ -146,8 +147,11 @@ LEAD_CAPTURE_FLOW_TEMPLATE.questions[1].validation = is_valid_email
 class Chatbot:
     def __init__(self, session_id: str, min_overall_confidence=0.7):
         self.session_id = session_id
-        self.context = cache.get_context(self.session_id)
+        self.context = {}
         self.min_overall_confidence = min_overall_confidence
+
+    async def load_context(self):
+        self.context = await session_manager.get_context(self.session_id)
 
     @property
     def last_intent(self) -> str | None:
@@ -157,81 +161,90 @@ class Chatbot:
     def last_intent(self, intent: str | None):
         self.context["last_intent"] = intent
 
-    def get_response(self, user_input: str) -> str:
-        if not isinstance(user_input, str) or not user_input.strip():
-            return random.choice(intent_recognizer.get_responses("invalid"))
+    async def get_response(self, user_input: str) -> str:
+        await self.load_context()
+        response = ""
+        try:
+            if not isinstance(user_input, str) or not user_input.strip():
+                response = random.choice(intent_recognizer.get_responses("invalid"))
+                return response
 
-        if any(keyword in user_input.lower() for keyword in EXIT_KEYWORDS):
-            active_flow = self.context.get("conversation_flow")
-            if active_flow and active_flow.is_active:
-                active_flow.deactivate()
-                self.last_intent = "invalid"
-                return "Okay, cancelling that. What would you like to do?"
-
-        intent, confidence, matched_patterns = self._recognize_intent(user_input)
-
-        active_flow = self.context.get("conversation_flow")
-        if active_flow and active_flow.is_active:
-            if intent != self.last_intent and intent not in [
-                "affirmative",
-                "invalid",
-                "product_selection",
-            ]:
-                active_flow.deactivate()
-            else:
-                response = active_flow.process_answer(user_input, self.context)
-                if response:
+            if any(keyword in user_input.lower() for keyword in EXIT_KEYWORDS):
+                active_flow = self.context.get("conversation_flow")
+                if active_flow and active_flow.is_active:
+                    active_flow.deactivate()
+                    self.last_intent = "invalid"
+                    response = "Okay, cancelling that. What would you like to do?"
                     return response
 
-        if self.last_intent == "product_info" and intent == "product_selection":
-            # This block might need refinement based on how product_selection is handled by IntentRecognizer
-            # For now, we'll rely on the intent_recognizer to handle product selection responses
-            pass  # The intent_recognizer should handle this now
+            intent, confidence, matched_patterns = self._recognize_intent(user_input)
 
-        if intent == "affirmative" and self.last_intent == "product_info":
-            self.last_intent = "product_info_affirmative"
-            return "Great! Which product are you interested in: AI-Powered Analytics, Cloud Services, or Cybersecurity?"
-
-        if intent == "lead_capture_start":
-            if self.context.get("lead_captured"):
-                return "I already have your contact information. A sales representative will be in touch soon."
-
-            new_flow = ConversationFlow(
-                list(LEAD_CAPTURE_FLOW_TEMPLATE.questions),
-                LEAD_CAPTURE_FLOW_TEMPLATE.completion_message,
-            )
-            self.context["conversation_flow"] = new_flow
-            question = new_flow.get_current_question()
-            self.last_intent = intent
-            return question.text if question else "Something went wrong."
-
-        if intent and intent != "invalid":
-            responses = intent_recognizer.get_responses(intent)
-            if isinstance(responses, list) and responses:
-                self.last_intent = intent
-                return random.choice(responses)
-
-        if intent == "help":
-            # This logic needs to be updated to use intent_recognizer.intents_data
-            capabilities = []
-            for key, data in intent_recognizer.intents_data.items():
-                if key not in [
-                    "invalid",
+            active_flow = self.context.get("conversation_flow")
+            if active_flow and active_flow.is_active:
+                if intent != self.last_intent and intent not in [
                     "affirmative",
-                    "help",
+                    "invalid",
                     "product_selection",
-                    "lead_capture_start",
-                ] and data.get("patterns"):
-                    capabilities.append(key.replace("_", " "))
-            if capabilities:
-                return f"I can help you with: {', '.join(capabilities)}. What would you like assistance with?"
-            else:
-                return (
-                    "I'm a simple chatbot right now, but I can answer basic questions."
-                )
+                ]:
+                    active_flow.deactivate()
+                else:
+                    flow_response = active_flow.process_answer(user_input, self.context)
+                    if flow_response:
+                        response = flow_response
+                        return response
 
-        self.last_intent = intent
-        return random.choice(intent_recognizer.get_responses("invalid"))
+            if self.last_intent == "product_info" and intent == "product_selection":
+                pass
+
+            if intent == "affirmative" and self.last_intent == "product_info":
+                self.last_intent = "product_info_affirmative"
+                response = "Great! Which product are you interested in: AI-Powered Analytics, Cloud Services, or Cybersecurity?"
+                return response
+
+            if intent == "lead_capture_start":
+                if self.context.get("lead_captured"):
+                    response = "I already have your contact information. A sales representative will be in touch soon."
+                    return response
+
+                new_flow = ConversationFlow(
+                    list(LEAD_CAPTURE_FLOW_TEMPLATE.questions),
+                    LEAD_CAPTURE_FLOW_TEMPLATE.completion_message,
+                )
+                self.context["conversation_flow"] = new_flow
+                question = new_flow.get_current_question()
+                self.last_intent = intent
+                response = question.text if question else "Something went wrong."
+                return response
+
+            if intent and intent != "invalid":
+                responses = intent_recognizer.get_responses(intent)
+                if isinstance(responses, list) and responses:
+                    self.last_intent = intent
+                    response = random.choice(responses)
+                    return response
+
+            if intent == "help":
+                capabilities = []
+                for key, data in intent_recognizer.intents_data.items():
+                    if key not in [
+                        "invalid",
+                        "affirmative",
+                        "help",
+                        "product_selection",
+                        "lead_capture_start",
+                    ] and data.get("patterns"):
+                        capabilities.append(key.replace("_", " "))
+                if capabilities:
+                    response = f"I can help you with: {', '.join(capabilities)}. What would you like assistance with?"
+                else:
+                    response = "I'm a simple chatbot right now, but I can answer basic questions."
+                return response
+
+            self.last_intent = intent
+            response = random.choice(intent_recognizer.get_responses("invalid"))
+            return response
+        finally:
+            await session_manager.save_context(self.session_id, self.context)
 
     def _recognize_intent(self, user_input: str) -> tuple[str, float, list]:
         # Use the new IntentRecognizer class

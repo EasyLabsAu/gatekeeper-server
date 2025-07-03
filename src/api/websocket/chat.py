@@ -29,7 +29,7 @@ def chat_events(sio: AsyncServer):
 
                 if user_message and sender == "user":
                     chatbot = Chatbot(session_id=sid)
-                    bot_response = chatbot.get_response(user_message)
+                    bot_response = await chatbot.get_response(user_message)
 
                     await sio.emit(
                         "chat",
