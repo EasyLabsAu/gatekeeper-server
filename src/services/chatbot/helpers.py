@@ -169,13 +169,13 @@ LEAD_CAPTURE_FLOW_TEMPLATE = ConversationFlow(
         Question(
             "info_name",
             "What is your full name?",
-            extractor=None,  # This will be set in nlp_utils
+            extractor=None,  # This will be set in core
             success_message="Thanks, {info_name}!",
         ),
         Question(
             "info_email",
             "What is your email address?",
-            validation=None,  # This will be set in nlp_utils
+            validation=None,  # This will be set in core
         ),
     ],
     completion_message="Perfect! Thank you, {info_name}. I have your email ({info_email}). Our sales team will be in touch.",
