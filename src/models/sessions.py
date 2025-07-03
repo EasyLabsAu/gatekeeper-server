@@ -19,8 +19,8 @@ class SessionStatus(str, Enum):
 
 
 class Sessions(BaseModel, table=True):
-    consumer_id: UUID = Field(foreign_key="consumers.id")
-    form_id: UUID = Field(foreign_key="forms.id")
+    consumer_id: UUID | None = Field(foreign_key="consumers.id")
+    form_id: UUID | None = Field(foreign_key="forms.id")
     status: SessionStatus = Field(
         default=SessionStatus.PENDING,
         sa_column=Column(SAEnum(SessionStatus)),
@@ -46,8 +46,8 @@ class Sessions(BaseModel, table=True):
 
 
 class SessionCreate(SQLModel):
-    consumer_id: UUID
-    form_id: UUID
+    consumer_id: UUID | None
+    form_id: UUID | None
     status: SessionStatus
     transcription: dict[str, Any]
     initiated_at: datetime
@@ -60,8 +60,8 @@ class SessionCreate(SQLModel):
 
 class SessionRead(SQLModel):
     id: UUID
-    consumer_id: UUID
-    form_id: UUID
+    consumer_id: UUID | None
+    form_id: UUID | None
     status: SessionStatus
     files: list[dict] | None = None
     tags: list[str] | None = None

@@ -1,8 +1,8 @@
 """create initial tables
 
-Revision ID: f7b659b1339b
+Revision ID: e3c87212f364
 Revises: 
-Create Date: 2025-06-30 18:11:00.955967
+Create Date: 2025-07-03 19:35:53.794099
 
 """
 from typing import Sequence, Union  # noqa: F401, UP035
@@ -15,7 +15,7 @@ from sqlmodel import AutoString
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'f7b659b1339b'
+revision: str = 'e3c87212f364'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -101,8 +101,8 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.Column('deleted_at', sa.DateTime(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
-    sa.Column('consumer_id', sa.Uuid(), nullable=False),
-    sa.Column('form_id', sa.Uuid(), nullable=False),
+    sa.Column('consumer_id', sa.Uuid(), nullable=True),
+    sa.Column('form_id', sa.Uuid(), nullable=True),
     sa.Column('status', sa.Enum('PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', name='sessionstatus'), nullable=True),
     sa.Column('transcription', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('initiated_at', sa.DateTime(timezone=True), nullable=True),
