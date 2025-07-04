@@ -28,6 +28,7 @@ def chat_events(sio: AsyncServer):
         @sio.on("chat")
         async def on_chat(sid, data):
             logger.info("Message from %s: %s", sid, data)
+            socket_session = await sio.get_session(sid)
 
             try:
                 parsed_data = json.loads(data) if isinstance(data, str) else data
@@ -47,8 +48,17 @@ def chat_events(sio: AsyncServer):
 
                     repository = SessionRepository()
                     session_id = session_map.get(sid)
+
                     if not session_id:
-                        session_data = SessionCreate(transcription=transcriptions[sid])
+                        session_data = SessionCreate(
+                            transcription=transcriptions[sid],
+                            meta_data={
+                                "user_agent": socket_session.get(
+                                    "user_agent", "unknown"
+                                ),
+                                "client_ip": socket_session.get("client_ip", "unknown"),
+                            },
+                        )
                         result = await repository.create(session_data)
                         if result and result.data:
                             session_id = result.data.id

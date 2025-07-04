@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
-
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -42,6 +42,7 @@ class HTTP_GATEWAY:
             middlewares = [
                 (CORSMiddleware, CORS_CONFIGS),
                 (LogRequests, {}),
+                (ProxyHeadersMiddleware, {"trusted_hosts": "*"}),
             ]
 
         for middleware_class, config in middlewares:

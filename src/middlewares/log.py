@@ -20,15 +20,17 @@ class LogRequests(BaseHTTPMiddleware):
         # Get client IP, handling potential proxy headers
         client_ip = request.client.host if request.client else "unknown"
         forwarded_for = request.headers.get("X-Forwarded-For")
+        user_agent = request.headers.get("User-Agent")
         if forwarded_for:
             client_ip = forwarded_for.split(",")[0].strip()
 
         # Log request
         logger.info(
-            "Incoming request | %s %s | Client IP: %s",
+            "Incoming request | %s %s | Client IP: %s | User Agent: %s",
             request.method,
             request.url.path,
             client_ip,
+            user_agent,
         )
 
         try:
@@ -37,23 +39,25 @@ class LogRequests(BaseHTTPMiddleware):
 
             # Log response
             logger.info(
-                "Request completed | %s %s | Status: %d | Time: %.3fs | Client IP: %s",
+                "Request completed | %s %s | Status: %d | Time: %.3fs | Client IP: %s | User Agent: %s",
                 request.method,
                 request.url.path,
                 response.status_code,
                 process_time,
                 client_ip,
+                user_agent,
             )
             return response
 
         except Exception as e:
             process_time = time.time() - start_time
             logger.error(
-                "Request failed | %s %s | Error: %s | Time: %.3fs | Client IP: %s",
+                "Request failed | %s %s | Error: %s | Time: %.3fs | Client IP: %s | User Agent: %s",
                 request.method,
                 request.url.path,
                 str(e),
                 process_time,
                 client_ip,
+                user_agent,
             )
             raise
