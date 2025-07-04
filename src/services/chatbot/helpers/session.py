@@ -14,7 +14,7 @@ class SessionManager:
         self.expiration = expiration
 
     async def get_context(self, session_id: str) -> dict[str, Any]:
-        pickled_context = await self.redis.get(session_id)
+        pickled_context = await self.redis.get(str(session_id))
         if pickled_context:
             context = pickle.loads(pickled_context)
             # Reset expiration on access
@@ -31,7 +31,7 @@ class SessionManager:
 
     async def save_context(self, session_id: str, context: dict[str, Any]):
         pickled_context = pickle.dumps(context)
-        await self.redis.setex(session_id, self.expiration, pickled_context)
+        await self.redis.setex(str(session_id), self.expiration, pickled_context)
 
     async def clear_session(self, session_id: str):
-        await self.redis.delete(session_id)
+        await self.redis.delete(str(session_id))

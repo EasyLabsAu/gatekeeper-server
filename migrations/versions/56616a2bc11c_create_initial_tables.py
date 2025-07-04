@@ -1,8 +1,8 @@
 """create initial tables
 
-Revision ID: b07084386325
+Revision ID: 56616a2bc11c
 Revises: 
-Create Date: 2025-07-04 11:41:06.264431
+Create Date: 2025-07-04 17:07:59.580035
 
 """
 from typing import Sequence, Union  # noqa: F401, UP035
@@ -15,7 +15,7 @@ from sqlmodel import AutoString
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'b07084386325'
+revision: str = '56616a2bc11c'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -104,10 +104,11 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.Column('consumer_id', sa.Uuid(), nullable=True),
     sa.Column('form_id', sa.Uuid(), nullable=True),
-    sa.Column('status', sa.Enum('PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', name='sessionstatus'), nullable=True),
+    sa.Column('status', sa.Enum('ACTIVE', 'CONCLUDED', 'DISCARDED', name='sessionstatus'), nullable=True),
     sa.Column('transcription', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('initiated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('activated_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('concluded_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('discarded_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('tags', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('files', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('feedback', sqlmodel.sql.sqltypes.AutoString(), nullable=True),

@@ -5,10 +5,22 @@ from datetime import datetime, timezone
 
 from socketio import AsyncServer
 
+from src.helpers.constants import (
+    CHAT_UPDATED_EVENT,
+)
+from src.helpers.events import events
 from src.helpers.logger import Logger
+from src.helpers.model import utc_now
+from src.models.sessions import SessionCreate, SessionUpdate
+from src.repositories.sessions import SessionRepository
 from src.services.chatbot.core import Chatbot
 
 logger = Logger(__name__)
+
+# In-memory storage for transcriptions and session IDs
+transcriptions = {}
+# To store sid -> session_id mapping
+session_map = {}
 
 
 def chat_events(sio: AsyncServer):
@@ -24,16 +36,50 @@ def chat_events(sio: AsyncServer):
                 user_message = parsed_data.get("message")
 
                 if user_message and sender == "user":
-                    chatbot = Chatbot(session_id=sid)
-                    bot_response = await chatbot.get_response(user_message)
+                    if sid not in transcriptions:
+                        transcriptions[sid] = []
+                    transcriptions[sid].append(
+                        {
+                            "sender": sender,
+                            "message": user_message,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
 
+                    repository = SessionRepository()
+                    session_id = session_map.get(sid)
+                    if not session_id:
+                        session_data = SessionCreate(transcription=transcriptions[sid])
+                        result = await repository.create(session_data)
+                        if result and result.data:
+                            session_id = result.data.id
+                        session_map[sid] = session_id
+                    else:
+                        await repository.get(session_id)
+
+                    chatbot = Chatbot(session_id=session_map[sid])
+                    bot_response = await chatbot.get_response(user_message)
+                    response = {
+                        "sender": "bot",
+                        "message": bot_response,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                    transcriptions[sid].append(response)
+
+                    if session_id:
+                        await events.emit(
+                            CHAT_UPDATED_EVENT,
+                            session_id,
+                            SessionUpdate(
+                                transcription=transcriptions[sid],
+                            ),
+                        )
+                    logger.info(
+                        "Current transcription for %s: %s", sid, transcriptions[sid]
+                    )
                     await sio.emit(
                         "chat",
-                        {
-                            "sender": "bot",
-                            "message": bot_response,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        },
+                        response,
                         room=sid,
                     )
                 else:
