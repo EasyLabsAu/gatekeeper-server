@@ -10,7 +10,6 @@ from src.helpers.constants import (
 )
 from src.helpers.events import events
 from src.helpers.logger import Logger
-from src.helpers.model import utc_now
 from src.models.sessions import SessionCreate, SessionUpdate
 from src.repositories.sessions import SessionRepository
 from src.services.chatbot.core import Chatbot

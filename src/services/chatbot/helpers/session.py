@@ -18,7 +18,7 @@ class SessionManager:
         if pickled_context:
             context = pickle.loads(pickled_context)
             # Reset expiration on access
-            await self.redis.expire(session_id, self.expiration)
+            await self.redis.expire(str(session_id), self.expiration)
             return context
 
         # Create a new session if one doesn't exist
