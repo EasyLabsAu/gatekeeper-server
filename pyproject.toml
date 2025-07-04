@@ -50,7 +50,8 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm.scripts]
-seed = "src.scripts.seed:main"
+seed = "python -m src.scripts.seed"
+precompute = "python -m src.scripts.precompute"
 dev = "pdm run uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080 --log-level debug"
 prod = "pdm run uvicorn src.server:app --lifespan on --host 0.0.0.0 --port 8080 --workers 4 --log-level info" 
 migrate-up = "alembic upgrade head"

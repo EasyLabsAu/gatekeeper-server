@@ -2,19 +2,21 @@ import json
 import pickle
 import random
 from pathlib import Path
+from uuid import UUID
 
 import numpy as np
 import spacy
 from annoy import AnnoyIndex
 
-from src.services.chatbot.helpers import (
+from src.core.database import SessionFactory
+from src.services.chatbot.helpers.flows import ConversationFlow, FormFlowManager
+from src.services.chatbot.helpers.session import SessionManager
+from src.services.chatbot.helpers.utils import (
     EXIT_KEYWORDS,
     LEAD_CAPTURE_FLOW_TEMPLATE,
-    ConversationFlow,
     extract_entities,
     extract_name,
     is_valid_email,
-    SessionManager,
 )
 
 
@@ -149,6 +151,8 @@ class Chatbot:
         self.session_id = session_id
         self.context = {}
         self.min_overall_confidence = min_overall_confidence
+        self.db_session = SessionFactory()
+        self.form_flow_manager = FormFlowManager(self.db_session, session_manager)
 
     async def load_context(self):
         self.context = await session_manager.get_context(self.session_id)
@@ -167,7 +171,7 @@ class Chatbot:
         try:
             if not isinstance(user_input, str) or not user_input.strip():
                 response = random.choice(intent_recognizer.get_responses("invalid"))
-                return response
+                return response if response is not None else ""
 
             if any(keyword in user_input.lower() for keyword in EXIT_KEYWORDS):
                 active_flow = self.context.get("conversation_flow")
@@ -175,13 +179,20 @@ class Chatbot:
                     active_flow.deactivate()
                     self.last_intent = "invalid"
                     response = "Okay, cancelling that. What would you like to do?"
-                    return response
+                    return response if response is not None else ""
 
             intent, confidence, matched_patterns = self._recognize_intent(user_input)
 
             active_flow = self.context.get("conversation_flow")
             if active_flow and active_flow.is_active:
-                if intent != self.last_intent and intent not in [
+                # If there's an active form flow, process the answer through it
+                if self.context.get("current_form_id"):
+                    response = await self.form_flow_manager.process_form_answer(
+                        self.session_id, user_input
+                    )
+                    return response if response is not None else ""
+                # Existing lead capture flow logic
+                elif intent != self.last_intent and intent not in [
                     "affirmative",
                     "invalid",
                     "product_selection",
@@ -191,7 +202,7 @@ class Chatbot:
                     flow_response = active_flow.process_answer(user_input, self.context)
                     if flow_response:
                         response = flow_response
-                        return response
+                        return response if response is not None else ""
 
             if self.last_intent == "product_info" and intent == "product_selection":
                 pass
@@ -199,7 +210,22 @@ class Chatbot:
             if intent == "affirmative" and self.last_intent == "product_info":
                 self.last_intent = "product_info_affirmative"
                 response = "Great! Which product are you interested in: AI-Powered Analytics, Cloud Services, or Cybersecurity?"
-                return response
+                return response if response is not None else ""
+
+            if intent == "start_form_conversation":
+                # Assuming the form_id can be extracted from the user input or context
+                # For now, let's use a placeholder form_id. This will need to be dynamic.
+                form_id_str = "3c828e5c-4a78-4cf2-ad3f-beb5a6c75c66"  # Placeholder UUID
+                try:
+                    form_id = UUID(form_id_str)
+                except ValueError:
+                    return "Invalid form ID provided."
+
+                response = await self.form_flow_manager.start_form_conversation(
+                    self.session_id, form_id
+                )
+                self.last_intent = intent
+                return response if response is not None else ""
 
             if intent == "lead_capture_start":
                 if self.context.get("lead_captured"):
@@ -255,7 +281,7 @@ class Chatbot:
         print(f"  Recognized Intent: '{intent}' (Confidence: {confidence:.2f})")
 
         # Extract entities using the nlp model from intent_recognizer
-        extracted_ents = extract_entities(user_input.lower(), intent_recognizer.nlp)
+        _ = extract_entities(user_input.lower(), intent_recognizer.nlp)
         # You can use extracted_ents here if needed for further logic, but for now,
         # the primary intent recognition is handled by IntentRecognizer.
 

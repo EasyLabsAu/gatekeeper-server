@@ -1402,5 +1402,18 @@
 			"I'm here to provide clarity and support. What would be the most valuable information for you right now?",
 			"Every question is important to us. Let me help you find the specific information you need."
 		]
+	},
+	"start_form_conversation": {
+		"patterns": [
+			"start form conversation",
+			"begin form",
+			"fill out a form",
+			"start a form"
+		],
+		"responses": [
+			"Okay, let's start the form conversation.",
+			"Initiating form. Please provide the requested information.",
+			"Beginning the form. What's the first piece of information?"
+		]
 	}
 }

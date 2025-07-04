@@ -33,8 +33,10 @@ RUN python -m spacy download en_core_web_lg
 COPY . .
 
 EXPOSE 8080
+
 ENV PYTHONPATH=/app
-CMD ["sh", "-c", "alembic upgrade head && python src/scripts/seed.py && uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080"]
+
+CMD ["sh", "-c", "alembic upgrade head && python src/scripts/seed.py && python src/scripts/precompute.py && uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080"]
 
 # Stage 2: Builder Environment
 FROM python:3.10 AS builder
@@ -85,4 +87,4 @@ COPY --from=builder /app/src /app/src
 EXPOSE 8080
 
 ENV PYTHONPATH=/app
-CMD ["sh", "-c", "alembic upgrade head && uvicorn src.server:app --host 0.0.0.0 --port 8080"]
+CMD ["sh", "-c", "alembic upgrade head && python src/scripts/seed.py && python src/scripts/precompute.py && uvicorn src.server:app --host 0.0.0.0 --port 8080"]

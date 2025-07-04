@@ -1,8 +1,8 @@
 """create initial tables
 
-Revision ID: e3c87212f364
+Revision ID: b07084386325
 Revises: 
-Create Date: 2025-07-03 19:35:53.794099
+Create Date: 2025-07-04 11:41:06.264431
 
 """
 from typing import Sequence, Union  # noqa: F401, UP035
@@ -15,7 +15,7 @@ from sqlmodel import AutoString
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'e3c87212f364'
+revision: str = 'b07084386325'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -77,6 +77,7 @@ def upgrade() -> None:
     sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('created_by', sa.Uuid(), nullable=False),
     sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column('chat_meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.ForeignKeyConstraint(['created_by'], ['providers.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -125,6 +126,7 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.Column('section_id', sa.Uuid(), nullable=False),
     sa.Column('label', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('prompt', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('field_type', sa.Enum('TEXT', 'NUMBER', 'BOOLEAN', 'DATETIME', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', name='formfieldtypes'), nullable=False),
     sa.Column('required', sa.Boolean(), nullable=False),
     sa.Column('order', sa.Integer(), nullable=False),

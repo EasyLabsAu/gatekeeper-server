@@ -10,10 +10,6 @@ from src.services.chatbot.core import Chatbot
 
 logger = Logger(__name__)
 
-# Initialize chatbot instance for each session (or manage globally if state is shared)
-# For simplicity, let's assume a new chatbot per session for now.
-# In a real app, store and retrieve chatbots from a session manager.
-
 
 def chat_events(sio: AsyncServer):
     if sio is not None and hasattr(sio, "on"):

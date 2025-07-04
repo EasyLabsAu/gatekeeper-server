@@ -5,11 +5,10 @@ from pathlib import Path
 from annoy import AnnoyIndex
 from spacy.language import Language
 
-from src.services.chatbot.helpers import load_spacy_model
 
-INTENTS_FILE = Path(__file__).parent / "data" / "intents.json"
-EMBEDDINGS_FILE = Path(__file__).parent / "data" / "intents_embeddings.pkl"
-ANNOY_INDEX_FILE = Path(__file__).parent / "data" / "intents_annoy_index.ann"
+INTENTS_FILE = Path(__file__).parent.parent / "data" / "intents.json"
+EMBEDDINGS_FILE = Path(__file__).parent.parent / "data" / "intents_embeddings.pkl"
+ANNOY_INDEX_FILE = Path(__file__).parent.parent / "data" / "intents_annoy_index.ann"
 
 
 def precompute_embeddings(nlp_model: Language):
@@ -62,12 +61,3 @@ def precompute_embeddings(nlp_model: Language):
     print(f"Intent mapping saved to {EMBEDDINGS_FILE}")
 
     print("Pre-computation complete.")
-
-
-if __name__ == "__main__":
-    nlp_instance = load_spacy_model("en_core_web_lg")
-    if nlp_instance is None:
-        raise RuntimeError(
-            "Failed to load SpaCy model. Cannot precompute embeddings. Please ensure 'en_core_web_lg' is installed by running: python -m spacy download en_core_web_lg"
-        )
-    precompute_embeddings(nlp_instance)
