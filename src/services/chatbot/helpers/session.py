@@ -26,6 +26,7 @@ class SessionManager:
             "conversation_flow": None,
             "lead_captured": False,
             "last_intent": None,
+            "invalid_answer_count": 0,
         }
 
     async def save_context(self, session_id: str, context: dict[str, Any]):

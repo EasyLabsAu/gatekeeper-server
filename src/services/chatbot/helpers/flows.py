@@ -145,32 +145,28 @@ class FormFlowManager:
         current_question = new_flow.get_current_question()
         return current_question.text if current_question else completion_message
 
-    async def process_form_answer(self, session_id: str, user_input: str) -> str:
+    async def process_form_answer(self, session_id: str, user_input: str) -> bool:
         context = await self.session_manager.get_context(session_id)
         active_flow: ConversationFlow | None = context.get("conversation_flow")
         current_form_id_str = context.get("current_form_id")
         form_responses_id = context.get("form_responses_id")
 
         if not active_flow or not active_flow.is_active or not current_form_id_str:
-            return "There is no active form conversation."
+            return False
 
         current_question = active_flow.get_current_question()
         if not current_question:
-            return active_flow.completion_message  # Should not happen if flow is active
+            return False
 
-        # Validate and save answer
         validation_error = self._validate_answer(user_input, current_question)
         if validation_error:
-            return validation_error + " Please try again."
+            return False
 
-        # Create main FormResponses entry if it doesn't exist
         if not form_responses_id:
             new_form_response = FormResponses(
                 form_id=UUID(current_form_id_str),
-                session_id=UUID(
-                    session_id
-                ),  # Assuming session_id can be used directly as UUID
-                submitted_at=None,  # Will be updated on completion
+                session_id=UUID(session_id),
+                submitted_at=None,
             )
             self.db_session.add(new_form_response)
             await self.db_session.commit()
@@ -180,7 +176,6 @@ class FormFlowManager:
         else:
             form_responses_id = UUID(form_responses_id)
 
-        # Get or create FormSectionResponses
         result = await self.db_session.scalars(
             select(FormSectionResponses).where(
                 FormSectionResponses.response_id == form_responses_id,
@@ -202,38 +197,45 @@ class FormFlowManager:
             await self.db_session.commit()
             await self.db_session.refresh(section_response)
 
-        # Save FormQuestionResponses
         question_response = FormQuestionResponses(
             section_response_id=section_response.id,
             question_id=current_question.question_id
             if current_question.question_id is not None
             else UUID(int=0),
-            answer=user_input,  # Store raw answer for now, can be parsed later
-            submitted_at=None,  # Will be updated on completion
+            answer=user_input,
+            submitted_at=None,
         )
         self.db_session.add(question_response)
         await self.db_session.commit()
         await self.db_session.refresh(question_response)
 
-        # Process answer in the flow (advances the flow's internal state)
         active_flow.process_answer(user_input, context)
 
+        await self.session_manager.save_context(session_id, context)
+        return True
+
+    async def get_next_question_text(self, session_id: str) -> str:
+        context = await self.session_manager.get_context(session_id)
+        active_flow: ConversationFlow | None = context.get("conversation_flow")
+
+        if not active_flow or not active_flow.is_active:
+            return "There is no active form conversation."
+
         if active_flow.is_completed:
-            # Mark main form response as submitted
+            form_responses_id = context.get("form_responses_id")
             main_form_response = await self.db_session.get(
-                FormResponses, form_responses_id
+                FormResponses, UUID(form_responses_id)
             )
             if main_form_response:
                 main_form_response.submitted_at = datetime.now().isoformat()
                 self.db_session.add(main_form_response)
                 await self.db_session.commit()
-            context["conversation_flow"] = None  # Clear flow
+            context["conversation_flow"] = None
             context["current_form_id"] = None
             context["form_responses_id"] = None
             await self.session_manager.save_context(session_id, context)
             return active_flow.completion_message
         else:
-            await self.session_manager.save_context(session_id, context)
             next_question = active_flow.get_current_question()
             return (
                 next_question.text

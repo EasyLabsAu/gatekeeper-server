@@ -185,11 +185,24 @@ class Chatbot:
 
             active_flow = self.context.get("conversation_flow")
             if active_flow and active_flow.is_active:
-                # If there's an active form flow, process the answer through it
                 if self.context.get("current_form_id"):
-                    response = await self.form_flow_manager.process_form_answer(
+                    is_valid_answer = await self.form_flow_manager.process_form_answer(
                         self.session_id, user_input
                     )
+                    if not is_valid_answer:
+                        self.context["invalid_answer_count"] += 1
+                        if self.context["invalid_answer_count"] >= 3:
+                            active_flow.deactivate()
+                            self.context["invalid_answer_count"] = 0
+                            response = "It seems you're having trouble. Let's try something else. What would you like to do?"
+                        else:
+                            response = "That doesn't seem right. Please try again."
+                    else:
+                        self.context["invalid_answer_count"] = 0
+                        response = await self.form_flow_manager.get_next_question_text(
+                            self.session_id
+                        )
+
                     return response if response is not None else ""
                 # Existing lead capture flow logic
                 elif intent != self.last_intent and intent not in [
