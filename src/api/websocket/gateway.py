@@ -14,9 +14,12 @@ def gateway_events(sio: AsyncServer):
         async def on_connect(sid, environ):
             user_agent = environ.get("HTTP_USER_AGENT", "unknown")
             client_ip = environ.get("REMOTE_ADDR", "unknown")
-            xff = environ.get("HTTP_X_FORWARDED_FOR")
-            if xff:
-                client_ip = xff.split(",")[0].strip()
+            if (
+                "asgi.scope" in environ
+                and "client" in environ["asgi.scope"]
+                and environ["asgi.scope"]["client"]
+            ):
+                client_ip = environ["asgi.scope"]["client"][0]
             logger.info(
                 "Client connected: %s | Client IP: %s | User Agent: %s",
                 sid,
