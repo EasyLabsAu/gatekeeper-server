@@ -83,7 +83,7 @@ def load_spacy_model(model_name: str) -> Language | None:
         nlp_model = spacy.load(model_name)
         logger.info("spaCy model loaded successfully.")
     except OSError:
-        logger.info(f"spaCy model '{model_name}' not found. Attempting to download...")
+        logger.info("spaCy model '%s' not found. Attempting to download...", model_name)
         try:
             subprocess.check_call(
                 [sys.executable, "-m", "spacy", "download", model_name]
@@ -91,7 +91,7 @@ def load_spacy_model(model_name: str) -> Language | None:
             nlp_model = spacy.load(model_name)
             logger.info("spaCy model downloaded and loaded successfully.")
         except (subprocess.CalledProcessError, OSError) as e:
-            logger.error(f"Failed to download or load spaCy model: {e}")
+            logger.error("Failed to download or load spaCy model: %s", e)
             nlp_model = None
     return nlp_model
 
@@ -100,7 +100,7 @@ EXIT_KEYWORDS = ["exit", "cancel", "stop", "nevermind", "bye"]
 
 
 def precompute_embeddings(nlp_model: Language):
-    logger.info(f"Loading intents from {INTENTS_FILE}...")
+    logger.info("Loading intents from %s...", INTENTS_FILE)
     with open(INTENTS_FILE, encoding="utf-8") as f:
         intents_data = json.load(f)
 
@@ -112,10 +112,12 @@ def precompute_embeddings(nlp_model: Language):
             intent_labels.append(intent_name)
 
     if not patterns:
-        logger.info("No patterns found in intents.json. Skipping embedding pre-computation.")
+        logger.info(
+            "No patterns found in intents.json. Skipping embedding pre-computation."
+        )
         return
 
-    logger.info(f"Generating embeddings for {len(patterns)} patterns...")
+    logger.info("Generating embeddings for %d patterns...", len(patterns))
     pattern_embeddings = [nlp_model(text).vector for text in patterns]
 
     if not pattern_embeddings:
@@ -134,12 +136,12 @@ def precompute_embeddings(nlp_model: Language):
     annoy_index.build(10)  # 10 trees for good balance between speed and accuracy
 
     annoy_index.save(str(ANNOY_INDEX_FILE))
-    logger.info(f"Annoy index saved to {ANNOY_INDEX_FILE}")
+    logger.info("Annoy index saved to %s", ANNOY_INDEX_FILE)
 
     intent_mapping = {i: (intent_labels[i], patterns[i]) for i in range(len(patterns))}
     with open(EMBEDDINGS_FILE, "wb") as f:
         pickle.dump(intent_mapping, f)
-    logger.info(f"Intent mapping saved to {EMBEDDINGS_FILE}")
+    logger.info("Intent mapping saved to %s", EMBEDDINGS_FILE)
 
     logger.info("Pre-computation complete.")
 
@@ -199,7 +201,9 @@ class Chatbot:
         else:
             self.embedding_dim = 300
             logger.warning(
-                f"Warning: SpaCy model '{model_name}' has no loaded vectors. Using default embedding_dim={self.embedding_dim}"
+                "Warning: SpaCy model '%s' has no loaded vectors. Using default embedding_dim=%d",
+                model_name,
+                self.embedding_dim,
             )
 
         self._load_intent_assets()
