@@ -17,9 +17,12 @@ from annoy import AnnoyIndex
 from spacy.language import Language
 
 from src.helpers.cache import Cache, PickleSerializer
+from src.helpers.logger import Logger
 from src.models.forms import (
     FormFieldTypes,
 )
+
+logger = Logger(__name__)
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 INTENTS_FILE = DATA_DIR / "intents.json"
@@ -78,17 +81,17 @@ def extract_entities(text: str, nlp_model: Language) -> list[tuple[str, str]]:
 def load_spacy_model(model_name: str) -> Language | None:
     try:
         nlp_model = spacy.load(model_name)
-        print("spaCy model loaded successfully.")
+        logger.info("spaCy model loaded successfully.")
     except OSError:
-        print(f"spaCy model '{model_name}' not found. Attempting to download...")
+        logger.info(f"spaCy model '{model_name}' not found. Attempting to download...")
         try:
             subprocess.check_call(
                 [sys.executable, "-m", "spacy", "download", model_name]
             )
             nlp_model = spacy.load(model_name)
-            print("spaCy model downloaded and loaded successfully.")
+            logger.info("spaCy model downloaded and loaded successfully.")
         except (subprocess.CalledProcessError, OSError) as e:
-            print(f"Failed to download or load spaCy model: {e}")
+            logger.error(f"Failed to download or load spaCy model: {e}")
             nlp_model = None
     return nlp_model
 
@@ -97,7 +100,7 @@ EXIT_KEYWORDS = ["exit", "cancel", "stop", "nevermind", "bye"]
 
 
 def precompute_embeddings(nlp_model: Language):
-    print(f"Loading intents from {INTENTS_FILE}...")
+    logger.info(f"Loading intents from {INTENTS_FILE}...")
     with open(INTENTS_FILE, encoding="utf-8") as f:
         intents_data = json.load(f)
 
@@ -109,14 +112,14 @@ def precompute_embeddings(nlp_model: Language):
             intent_labels.append(intent_name)
 
     if not patterns:
-        print("No patterns found in intents.json. Skipping embedding pre-computation.")
+        logger.info("No patterns found in intents.json. Skipping embedding pre-computation.")
         return
 
-    print(f"Generating embeddings for {len(patterns)} patterns...")
+    logger.info(f"Generating embeddings for {len(patterns)} patterns...")
     pattern_embeddings = [nlp_model(text).vector for text in patterns]
 
     if not pattern_embeddings:
-        print("No valid embeddings generated. Skipping Annoy index build.")
+        logger.info("No valid embeddings generated. Skipping Annoy index build.")
         return
 
     embedding_dim = len(pattern_embeddings[0])
@@ -127,18 +130,18 @@ def precompute_embeddings(nlp_model: Language):
     for i, vec in enumerate(pattern_embeddings):
         annoy_index.add_item(i, vec)
 
-    print("Building Annoy index...")
+    logger.info("Building Annoy index...")
     annoy_index.build(10)  # 10 trees for good balance between speed and accuracy
 
     annoy_index.save(str(ANNOY_INDEX_FILE))
-    print(f"Annoy index saved to {ANNOY_INDEX_FILE}")
+    logger.info(f"Annoy index saved to {ANNOY_INDEX_FILE}")
 
     intent_mapping = {i: (intent_labels[i], patterns[i]) for i in range(len(patterns))}
     with open(EMBEDDINGS_FILE, "wb") as f:
         pickle.dump(intent_mapping, f)
-    print(f"Intent mapping saved to {EMBEDDINGS_FILE}")
+    logger.info(f"Intent mapping saved to {EMBEDDINGS_FILE}")
 
-    print("Pre-computation complete.")
+    logger.info("Pre-computation complete.")
 
 
 class Question:
@@ -195,7 +198,7 @@ class Chatbot:
             self.embedding_dim = self.nlp.vocab.vectors.shape[1]
         else:
             self.embedding_dim = 300
-            print(
+            logger.warning(
                 f"Warning: SpaCy model '{model_name}' has no loaded vectors. Using default embedding_dim={self.embedding_dim}"
             )
 
@@ -203,7 +206,7 @@ class Chatbot:
 
     def _load_intent_assets(self):
         if not ANNOY_INDEX_FILE.exists() or not EMBEDDINGS_FILE.exists():
-            print(
+            logger.info(
                 "Pre-computed embeddings or Annoy index not found. Running pre-computation..."
             )
             initialize_nltk_data()
@@ -405,10 +408,10 @@ class Chatbot:
             new_form_response_id = str(UUID(int=random.randint(0, 2**32 - 1)))
             self.context["form_responses_id"] = new_form_response_id
             form_responses_id = new_form_response_id
-            print("--- New Form Response ---")
-            print(f"  Form Response ID: {form_responses_id}")
-            print(f"  Form ID: {current_form_id_str}")
-            print(f"  Session ID: {self.session_id}")
+            logger.info("--- New Form Response ---")
+            logger.info(f"  Form Response ID: {form_responses_id}")
+            logger.info(f"  Form ID: {current_form_id_str}")
+            logger.info(f"  Session ID: {self.session_id}")
         else:
             form_responses_id = form_responses_id_str
 
@@ -419,10 +422,10 @@ class Chatbot:
         if section_id_str not in self.context["section_responses"]:
             new_section_response_id = str(UUID(int=random.randint(0, 2**32 - 1)))
             self.context["section_responses"][section_id_str] = new_section_response_id
-            print("--- New Section Response ---")
-            print(f"  Section Response ID: {new_section_response_id}")
-            print(f"  Form Response ID: {form_responses_id}")
-            print(f"  Section ID: {section_id_str}")
+            logger.info("--- New Section Response ---")
+            logger.info(f"  Section Response ID: {new_section_response_id}")
+            logger.info(f"  Form Response ID: {form_responses_id}")
+            logger.info(f"  Section ID: {section_id_str}")
 
         section_response_id = self.context["section_responses"][section_id_str]
 
@@ -432,15 +435,15 @@ class Chatbot:
             "answer": answer,
             "submitted_at": datetime.now().isoformat(),
         }
-        print("--- New Question Response ---")
-        print(json.dumps(question_response, indent=2))
+        logger.info("--- New Question Response ---")
+        logger.info(json.dumps(question_response, indent=2))
 
     async def _finalize_form_submission(self):
         form_responses_id_str = self.context.get("form_responses_id")
         if form_responses_id_str:
-            print("--- Form Submission Finalized ---")
-            print(f"  Form Response ID: {form_responses_id_str}")
-            print(f"  Submitted At: {datetime.now().isoformat()}")
+            logger.info("--- Form Submission Finalized ---")
+            logger.info(f"  Form Response ID: {form_responses_id_str}")
+            logger.info(f"  Submitted At: {datetime.now().isoformat()}")
 
         self.context["current_form_id"] = None
         self.context["form_responses_id"] = None
@@ -508,6 +511,7 @@ class Chatbot:
                 return response or "Something went wrong starting the form."
 
             intent, _, _ = self._recognize_intent(user_input)
+            logger.info("Final intent recognized: %s", intent)
             self.last_intent = intent
 
             if intent == "help":
