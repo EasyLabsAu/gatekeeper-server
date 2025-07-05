@@ -1,8 +1,7 @@
 import os
 import sys
 
-from src.services.chatbot.helpers.precompute import precompute_embeddings
-from src.services.chatbot.helpers.utils import load_spacy_model
+from src.services.chatbot import load_spacy_model, precompute_embeddings
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 

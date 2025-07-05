@@ -15,7 +15,8 @@ from src.helpers.model import utc_now
 from src.models.chat import Chat, ChatType
 from src.models.sessions import SessionCreate, SessionUpdate
 from src.repositories.sessions import SessionRepository
-from src.services.chatbot.core import Chatbot
+from src.repositories.forms import FormRepository
+from src.services.chatbot import Chatbot
 
 logger = Logger(__name__)
 
@@ -104,6 +105,11 @@ def chat_events(sio: AsyncServer):
                 parsed_data = json.loads(data) if isinstance(data, str) else data
                 sender = parsed_data.get("sender")
                 message_payload = parsed_data.get("message")
+                current_form_id = parsed_data.get("form", None)
+
+                if current_form_id:
+                    await set_form_id(client_id, current_form_id)
+
                 user_message = (
                     message_payload.get("message")
                     if isinstance(message_payload, dict)
@@ -141,7 +147,7 @@ def chat_events(sio: AsyncServer):
                         ).model_dump(),
                     )
 
-                    repository = SessionRepository()
+                    session_repository = SessionRepository()
                     session_id = await get_session_id(client_id)
 
                     if not session_id:
@@ -156,15 +162,23 @@ def chat_events(sio: AsyncServer):
                                 "client_ip": socket_session.get("client_ip", "unknown"),
                             },
                         )
-                        result = await repository.create(session_data)
+                        result = await session_repository.create(session_data)
                         if result and result.data:
                             session_id = result.data.id
                         await set_session_id(client_id, str(session_id))
                     else:
-                        await repository.get(UUID(session_id))
+                        await session_repository.get(UUID(session_id))
 
                     chatbot = Chatbot(session_id=str(session_id))
+                    form_id = await get_form_id(client_id)
+                    form_repository = FormRepository()
                     bot_response = await chatbot.get_response(user_message)
+                    if form_id:
+                        form = await form_repository.get(UUID(form_id))
+                        if form and form.data:
+                            bot_response = await chatbot.get_response(
+                                user_message, form.data.model_dump()
+                            )
                     bot_message = Chat(
                         type=ChatType.ENGAGEMENT,
                         client_id=client_id,
