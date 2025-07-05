@@ -76,6 +76,19 @@ async def delete_forms(client_id: str):
     )
 
 
+async def set_form_onboarded(client_id: str, onboarded: bool):
+    await cache.set(f"form_onboarded:{client_id}", "true" if onboarded else "false")
+
+
+async def get_form_onboarded(client_id: str) -> bool:
+    status = await cache.get(f"form_onboarded:{client_id}")
+    return status == "true"
+
+
+async def delete_form_onboarded(client_id: str):
+    await cache.delete(f"form_onboarded:{client_id}")
+
+
 async def delete_client(client_id: str):
     client_list = await cache.list_get("clients") or []
 
@@ -170,25 +183,28 @@ def chat_events(sio: AsyncServer):
                     if form_id:
                         form = await form_repository.get(UUID(form_id))
                         if form and form.data:
-                            form_name = form.data.name
-                            await sio.emit(
-                                "chat",
-                                Chat(
-                                    type=ChatType.ENGAGEMENT,
-                                    client_id=client_id,
-                                    sender="bot",
-                                    message=f"Great! Let us start with {form_name}.",
-                                    timestamp=utc_now().isoformat(),
-                                    form=None,
-                                ).model_dump(),
-                                room=sid,
-                            )
+                            form_onboarded = await get_form_onboarded(client_id)
+                            if not form_onboarded:
+                                await set_form_onboarded(client_id, True)
+                                await sio.emit(
+                                    "chat",
+                                    Chat(
+                                        type=ChatType.ONBOARDING,
+                                        client_id=client_id,
+                                        sender="bot",
+                                        message="Great! I will require some details from you.",
+                                        timestamp=utc_now().isoformat(),
+                                        form=None,
+                                    ).model_dump(),
+                                    room=sid,
+                                )
                             bot_response = await chatbot.get_response(
                                 user_message, form.data.model_dump()
                             )
                         else:
                             bot_response = "Form not found. Please try a different one."
                             await delete_forms(client_id)
+                            await delete_form_onboarded(client_id)
 
                     bot_message = Chat(
                         type=ChatType.ENGAGEMENT,

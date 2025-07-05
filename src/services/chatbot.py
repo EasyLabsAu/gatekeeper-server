@@ -203,7 +203,9 @@ class Chatbot:
 
     def _load_intent_assets(self):
         if not ANNOY_INDEX_FILE.exists() or not EMBEDDINGS_FILE.exists():
-            print("Pre-computed embeddings or Annoy index not found. Running pre-computation...")
+            print(
+                "Pre-computed embeddings or Annoy index not found. Running pre-computation..."
+            )
             initialize_nltk_data()
             precompute_embeddings(self.nlp)
 
