@@ -28,7 +28,7 @@ class SOCKET_GATEWAY:
             engineio_logger=True,
             client_manager=state_manager,
             connectionStateRecovery={
-                "maxDisconnectionDuration": 5 * 60 * 1000,  # 5 minutes
+                "maxDisconnectionDuration": 5 * 60 * 1000,
                 "skipMiddlewares": True,
             },
         )

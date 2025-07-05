@@ -41,20 +41,14 @@ def gateway_events(sio: AsyncServer):
                 await sio.emit(
                     "connection",
                     {
+                        "type": "onboarding",
                         "client_id": client_id,
-                        "user_agent": user_agent,
-                        "client_ip": client_ip,
+                        "sender": "bot",
+                        "message": "Hey there! How can I help you?",
+                        "timestamp": utc_now().isoformat(),
                     },
                     room=sid,
                 )
-                welcome_message = {
-                    "client_id": client_id,
-                    "sender": "bot",
-                    "message": "Hey there! How can I help you?",
-                    "timestamp": utc_now().isoformat(),
-                }
-                await sio.emit("chat", welcome_message, room=sid)
-
                 logger.info("Session established for %s", client_id)
                 return True
 

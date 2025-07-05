@@ -1,25 +1,57 @@
 # pyright: reportOptionalCall=false
 
 import json
-from datetime import datetime, timezone
+from uuid import UUID
 
 from socketio import AsyncServer
 
+from src.helpers.cache import Cache
 from src.helpers.constants import (
     CHAT_UPDATED_EVENT,
 )
 from src.helpers.events import events
 from src.helpers.logger import Logger
+from src.helpers.model import utc_now
 from src.models.sessions import SessionCreate, SessionUpdate
 from src.repositories.sessions import SessionRepository
 from src.services.chatbot.core import Chatbot
 
 logger = Logger(__name__)
 
-# In-memory storage for transcriptions and session IDs
-transcriptions = {}
-# To store client_id -> session_id mapping
-session_map = {}
+cache = Cache(default_ttl=86400)
+
+
+async def set_session_id(client_id: str, session_id: str):
+    await cache.set(f"session_map:{client_id}", session_id)
+
+
+async def get_session_id(client_id: str) -> str | None:
+    return await cache.get(f"session_map:{client_id}")
+
+
+async def get_transcriptions(client_id: str) -> list[dict]:
+    try:
+        return await cache.list_get(f"transcriptions:{client_id}") or []
+    except (AttributeError, TypeError):
+        await cache.delete(f"transcriptions:{client_id}")
+        return []
+
+
+async def set_transcriptions(client_id: str, transcriptions: list[dict]):
+    key = f"transcriptions:{client_id}"
+    await cache.delete(key)
+    if transcriptions:
+        await cache.list_append(key, *transcriptions)
+
+
+async def append_transcription(client_id: str, message: dict):
+    await cache.list_append(f"transcriptions:{client_id}", message)
+
+
+async def delete_client_data(client_id: str):
+    await cache.delete(
+        f"transcriptions:{client_id}",
+    )
 
 
 def chat_events(sio: AsyncServer):
@@ -29,7 +61,9 @@ def chat_events(sio: AsyncServer):
         async def on_chat(sid, data, auth):
             logger.info("Message from %s: %s", sid, data)
             socket_session = await sio.get_session(sid)
-            client_id = socket_session.get("client_fingerprint", sid)
+            client_id = (
+                auth.get("client_id") if auth else socket_session.get("client_id", sid)
+            )
 
             try:
                 parsed_data = json.loads(data) if isinstance(data, str) else data
@@ -37,32 +71,36 @@ def chat_events(sio: AsyncServer):
                 user_message = parsed_data.get("message")
 
                 if user_message and sender == "user":
-                    if client_id not in transcriptions:
-                        transcriptions[client_id] = []
-                    # Default first response
-                    transcriptions[client_id].append(
+                    transcriptions = await get_transcriptions(client_id)
+                    if not transcriptions:
+                        await append_transcription(
+                            client_id,
+                            {
+                                "type": "onboarding",
+                                "client_id": client_id,
+                                "sender": "bot",
+                                "message": "Hey there! How can I help you?",
+                                "timestamp": utc_now().isoformat(),
+                            },
+                        )
+                    await append_transcription(
+                        client_id,
                         {
-                            "client_id": client_id,
-                            "sender": "bot",
-                            "message": "Hey there! How can I help you?",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        }
-                    )
-                    transcriptions[client_id].append(
-                        {
+                            "type": "engagement",
                             "client_id": client_id,
                             "sender": sender,
                             "message": user_message,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        }
+                            "timestamp": utc_now().isoformat(),
+                        },
                     )
 
                     repository = SessionRepository()
-                    session_id = session_map.get(client_id)
+                    session_id = await get_session_id(client_id)
 
                     if not session_id:
+                        current_transcriptions = await get_transcriptions(client_id)
                         session_data = SessionCreate(
-                            transcription=transcriptions[client_id],
+                            transcription=current_transcriptions,
                             meta_data={
                                 "user_agent": socket_session.get(
                                     "user_agent", "unknown"
@@ -73,32 +111,34 @@ def chat_events(sio: AsyncServer):
                         result = await repository.create(session_data)
                         if result and result.data:
                             session_id = result.data.id
-                        session_map[client_id] = session_id
+                        await set_session_id(client_id, str(session_id))
                     else:
-                        await repository.get(session_id)
+                        await repository.get(UUID(session_id))
 
-                    chatbot = Chatbot(session_id=session_map[client_id])
+                    chatbot = Chatbot(session_id=str(session_id))
                     bot_response = await chatbot.get_response(user_message)
                     response = {
+                        "type": "engagement",
                         "client_id": client_id,
                         "sender": "bot",
                         "message": bot_response,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "timestamp": utc_now().isoformat(),
                     }
-                    transcriptions[client_id].append(response)
+                    await append_transcription(client_id, response)
 
+                    current_transcriptions = await get_transcriptions(client_id)
                     if session_id:
                         await events.emit(
                             CHAT_UPDATED_EVENT,
                             session_id,
                             SessionUpdate(
-                                transcription=transcriptions[client_id],
+                                transcription=current_transcriptions,
                             ),
                         )
                     logger.info(
                         "Current transcription for %s: %s",
                         client_id,
-                        transcriptions[client_id],
+                        current_transcriptions,
                     )
                     await sio.emit(
                         "chat",
