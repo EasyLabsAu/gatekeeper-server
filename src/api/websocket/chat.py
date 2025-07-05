@@ -104,17 +104,11 @@ def chat_events(sio: AsyncServer):
             try:
                 parsed_data = json.loads(data) if isinstance(data, str) else data
                 sender = parsed_data.get("sender")
-                message_payload = parsed_data.get("message")
-                current_form_id = parsed_data.get("form", None)
+                user_message = parsed_data.get("message")
+                form = parsed_data.get("form", None)
 
-                if current_form_id:
-                    await set_form_id(client_id, current_form_id)
-
-                user_message = (
-                    message_payload.get("message")
-                    if isinstance(message_payload, dict)
-                    else message_payload
-                )
+                if form:
+                    await set_form_id(client_id, form)
 
                 # TODO: delete when the chat is ended by user
                 # await delete_transcriptions(client_id)
@@ -147,8 +141,8 @@ def chat_events(sio: AsyncServer):
                         ).model_dump(),
                     )
 
-                    session_repository = SessionRepository()
                     session_id = await get_session_id(client_id)
+                    session_repository = SessionRepository()
 
                     if not session_id:
                         current_transcriptions = await get_transcriptions(client_id)
@@ -176,6 +170,19 @@ def chat_events(sio: AsyncServer):
                     if form_id:
                         form = await form_repository.get(UUID(form_id))
                         if form and form.data:
+                            form_name = form.data.name
+                            await sio.emit(
+                                "chat",
+                                Chat(
+                                    type=ChatType.ENGAGEMENT,
+                                    client_id=client_id,
+                                    sender="bot",
+                                    message=f"Great! Let us start with {form_name}.",
+                                    timestamp=utc_now().isoformat(),
+                                    form=None,
+                                ).model_dump(),
+                                room=sid,
+                            )
                             bot_response = await chatbot.get_response(
                                 user_message, form.data.model_dump()
                             )
