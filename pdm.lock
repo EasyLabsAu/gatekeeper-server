@@ -5,10 +5,25 @@
 groups = ["default", "dev", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:8e2d79dba56bebd32ffa0a337788a7a7266f4d984c1e49230c9eb86a8504cd38"
+content_hash = "sha256:954f7f3246c849cfc926bd44f3c15fdb662afd5eaf87de85444a5bf672077496"
 
 [[metadata.targets]]
 requires_python = ">=3.10"
+
+[[package]]
+name = "aioredis"
+version = "2.0.1"
+requires_python = ">=3.6"
+summary = "asyncio (PEP 3156) Redis support"
+groups = ["default"]
+dependencies = [
+    "async-timeout",
+    "typing-extensions",
+]
+files = [
+    {file = "aioredis-2.0.1-py3-none-any.whl", hash = "sha256:9ac0d0b3b485d293b8ca1987e6de8658d7dafcca1cddfcd1d506cae8cdebfdd6"},
+    {file = "aioredis-2.0.1.tar.gz", hash = "sha256:eaa51aaf993f2d71f54b70527c440437ba65340588afeb786cd87c55c89cd98e"},
+]
 
 [[package]]
 name = "aiosmtplib"
@@ -99,7 +114,6 @@ version = "5.0.1"
 requires_python = ">=3.8"
 summary = "Timeout context manager for asyncio programs"
 groups = ["default"]
-marker = "python_full_version < \"3.11.3\""
 files = [
     {file = "async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c"},
     {file = "async_timeout-5.0.1.tar.gz", hash = "sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3"},

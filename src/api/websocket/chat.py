@@ -18,7 +18,7 @@ logger = Logger(__name__)
 
 # In-memory storage for transcriptions and session IDs
 transcriptions = {}
-# To store sid -> session_id mapping
+# To store client_id -> session_id mapping
 session_map = {}
 
 
@@ -26,9 +26,10 @@ def chat_events(sio: AsyncServer):
     if sio is not None and hasattr(sio, "on"):
 
         @sio.on("chat")
-        async def on_chat(sid, data):
+        async def on_chat(sid, data, auth):
             logger.info("Message from %s: %s", sid, data)
             socket_session = await sio.get_session(sid)
+            client_id = socket_session.get("client_fingerprint", sid)
 
             try:
                 parsed_data = json.loads(data) if isinstance(data, str) else data
@@ -36,10 +37,20 @@ def chat_events(sio: AsyncServer):
                 user_message = parsed_data.get("message")
 
                 if user_message and sender == "user":
-                    if sid not in transcriptions:
-                        transcriptions[sid] = []
-                    transcriptions[sid].append(
+                    if client_id not in transcriptions:
+                        transcriptions[client_id] = []
+                    # Default first response
+                    transcriptions[client_id].append(
                         {
+                            "client_id": client_id,
+                            "sender": "bot",
+                            "message": "Hey there! How can I help you?",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
+                    transcriptions[client_id].append(
+                        {
+                            "client_id": client_id,
                             "sender": sender,
                             "message": user_message,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -47,11 +58,11 @@ def chat_events(sio: AsyncServer):
                     )
 
                     repository = SessionRepository()
-                    session_id = session_map.get(sid)
+                    session_id = session_map.get(client_id)
 
                     if not session_id:
                         session_data = SessionCreate(
-                            transcription=transcriptions[sid],
+                            transcription=transcriptions[client_id],
                             meta_data={
                                 "user_agent": socket_session.get(
                                     "user_agent", "unknown"
@@ -62,29 +73,32 @@ def chat_events(sio: AsyncServer):
                         result = await repository.create(session_data)
                         if result and result.data:
                             session_id = result.data.id
-                        session_map[sid] = session_id
+                        session_map[client_id] = session_id
                     else:
                         await repository.get(session_id)
 
-                    chatbot = Chatbot(session_id=session_map[sid])
+                    chatbot = Chatbot(session_id=session_map[client_id])
                     bot_response = await chatbot.get_response(user_message)
                     response = {
+                        "client_id": client_id,
                         "sender": "bot",
                         "message": bot_response,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
-                    transcriptions[sid].append(response)
+                    transcriptions[client_id].append(response)
 
                     if session_id:
                         await events.emit(
                             CHAT_UPDATED_EVENT,
                             session_id,
                             SessionUpdate(
-                                transcription=transcriptions[sid],
+                                transcription=transcriptions[client_id],
                             ),
                         )
                     logger.info(
-                        "Current transcription for %s: %s", sid, transcriptions[sid]
+                        "Current transcription for %s: %s",
+                        client_id,
+                        transcriptions[client_id],
                     )
                     await sio.emit(
                         "chat",
@@ -93,12 +107,14 @@ def chat_events(sio: AsyncServer):
                     )
                 else:
                     logger.warning(
-                        "Received empty 'message' from %s. Data: %s", sid, data
+                        "Received empty 'message' from %s. Data: %s", client_id, data
                     )
 
             except json.JSONDecodeError:
-                logger.error("Failed to parse JSON from %s. Raw data: %s", sid, data)
+                logger.error(
+                    "Failed to parse JSON from %s. Raw data: %s", client_id, data
+                )
             except (TypeError, AttributeError) as e:
                 logger.exception(
-                    "Unexpected error while handling chat from %s: %s", sid, e
+                    "Unexpected error while handling chat from %s: %s", client_id, e
                 )

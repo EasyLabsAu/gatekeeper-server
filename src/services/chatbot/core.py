@@ -113,20 +113,13 @@ class IntentRecognizer:
 
         return best_intent, best_score, matched_patterns
 
-    def get_responses(self, intent_name, product_type=None):
+    def get_responses(self, intent_name):
         if intent_name not in self.intents_data:
             return ["I'm sorry, I don't have a response for that."]
 
         responses = self.intents_data[intent_name]["responses"]
 
-        if intent_name == "product_selection" and product_type:
-            if isinstance(responses, dict) and product_type in responses:
-                return responses[product_type]
-            else:
-                return [
-                    "I'm sorry, I don't have specific information for that product type."
-                ]
-        elif isinstance(responses, list):
+        if isinstance(responses, list):
             return responses
         else:
             return [
@@ -173,6 +166,8 @@ class Chatbot:
                 response = random.choice(intent_recognizer.get_responses("invalid"))
                 return response if response is not None else ""
 
+            intent, confidence, matched_patterns = self._recognize_intent(user_input)
+
             if any(keyword in user_input.lower() for keyword in EXIT_KEYWORDS):
                 active_flow = self.context.get("conversation_flow")
                 if active_flow and active_flow.is_active:
@@ -180,8 +175,6 @@ class Chatbot:
                     self.last_intent = "invalid"
                     response = "Okay, cancelling that. What would you like to do?"
                     return response if response is not None else ""
-
-            intent, confidence, matched_patterns = self._recognize_intent(user_input)
 
             active_flow = self.context.get("conversation_flow")
             if active_flow and active_flow.is_active:
@@ -208,7 +201,6 @@ class Chatbot:
                 elif intent != self.last_intent and intent not in [
                     "affirmative",
                     "invalid",
-                    "product_selection",
                 ]:
                     active_flow.deactivate()
                 else:
@@ -217,18 +209,10 @@ class Chatbot:
                         response = flow_response
                         return response if response is not None else ""
 
-            if self.last_intent == "product_info" and intent == "product_selection":
-                pass
-
-            if intent == "affirmative" and self.last_intent == "product_info":
-                self.last_intent = "product_info_affirmative"
-                response = "Great! Which product are you interested in: AI-Powered Analytics, Cloud Services, or Cybersecurity?"
-                return response if response is not None else ""
-
             if intent == "start_form_conversation":
                 # TODO: Make this dynamic
                 # For now, let's use a placeholder form_id. This will need to be dynamic.
-                form_id_str = "08c917a3-e7b5-485d-98d7-43836da90d4a"
+                form_id_str = "954c2ec6-0ce9-43bd-888d-88a0a8347243"
                 try:
                     form_id = UUID(form_id_str)
                 except ValueError:
@@ -269,8 +253,6 @@ class Chatbot:
                         "invalid",
                         "affirmative",
                         "help",
-                        "product_selection",
-                        "lead_capture_start",
                     ] and data.get("patterns"):
                         capabilities.append(key.replace("_", " "))
                 if capabilities:
