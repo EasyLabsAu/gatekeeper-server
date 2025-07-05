@@ -103,7 +103,12 @@ def chat_events(sio: AsyncServer):
             try:
                 parsed_data = json.loads(data) if isinstance(data, str) else data
                 sender = parsed_data.get("sender")
-                user_message = parsed_data.get("message")
+                message_payload = parsed_data.get("message")
+                user_message = (
+                    message_payload.get("message")
+                    if isinstance(message_payload, dict)
+                    else message_payload
+                )
 
                 # TODO: delete when the chat is ended by user
                 # await delete_transcriptions(client_id)
