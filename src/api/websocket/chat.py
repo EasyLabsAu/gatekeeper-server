@@ -14,8 +14,8 @@ from src.helpers.logger import Logger
 from src.helpers.model import utc_now
 from src.models.chat import Chat, ChatType
 from src.models.sessions import SessionCreate, SessionUpdate
-from src.repositories.sessions import SessionRepository
 from src.repositories.forms import FormRepository
+from src.repositories.sessions import SessionRepository
 from src.services.chatbot import Chatbot
 
 logger = Logger(__name__)
@@ -179,6 +179,10 @@ def chat_events(sio: AsyncServer):
                             bot_response = await chatbot.get_response(
                                 user_message, form.data.model_dump()
                             )
+                        else:
+                            bot_response = "Form not found. Please try a different one."
+                            await delete_forms(client_id)
+
                     bot_message = Chat(
                         type=ChatType.ENGAGEMENT,
                         client_id=client_id,
