@@ -22,11 +22,11 @@ cache = Cache(default_ttl=86400)
 
 
 async def set_session_id(client_id: str, session_id: str):
-    await cache.set(f"session_map:{client_id}", session_id)
+    await cache.set(f"sessions:{client_id}", session_id)
 
 
 async def get_session_id(client_id: str) -> str | None:
-    return await cache.get(f"session_map:{client_id}")
+    return await cache.get(f"sessions:{client_id}")
 
 
 async def get_transcriptions(client_id: str) -> list[dict]:
@@ -48,10 +48,30 @@ async def append_transcription(client_id: str, message: dict):
     await cache.list_append(f"transcriptions:{client_id}", message)
 
 
-async def delete_client_data(client_id: str):
+async def delete_transcriptions(client_id: str):
     await cache.delete(
         f"transcriptions:{client_id}",
     )
+
+
+async def delete_sessions(client_id: str):
+    await cache.delete(
+        f"sessions:{client_id}",
+    )
+
+
+async def delete_client(client_id: str):
+    client_list = await cache.list_get("clients") or []
+
+    for i, client in enumerate(client_list):
+        if client == client_id:
+            client_list.pop(i)
+            break
+
+    await cache.delete("clients")
+
+    if client_list:
+        await cache.list_append("clients", *client_list)
 
 
 def chat_events(sio: AsyncServer):
@@ -69,6 +89,11 @@ def chat_events(sio: AsyncServer):
                 parsed_data = json.loads(data) if isinstance(data, str) else data
                 sender = parsed_data.get("sender")
                 user_message = parsed_data.get("message")
+
+                # TODO: delete when the chat is ended by user
+                # await delete_transcriptions(client_id)
+                # await delete_sessions(client_id)
+                # await delete_client(client_id)
 
                 if user_message and sender == "user":
                     transcriptions = await get_transcriptions(client_id)

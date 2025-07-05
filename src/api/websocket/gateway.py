@@ -1,10 +1,21 @@
 # pyright: reportOptionalCall=false
 from socketio import AsyncServer
 
+from src.helpers.cache import Cache
 from src.helpers.logger import Logger
 from src.helpers.model import utc_now
 
 logger = Logger(__name__)
+
+cache = Cache(default_ttl=86400)
+
+
+async def get_clients() -> list[dict]:
+    return await cache.list_get("clients") or []
+
+
+async def add_client(client: dict):
+    await cache.list_append("clients", client)
 
 
 def gateway_events(sio: AsyncServer):
@@ -38,18 +49,23 @@ def gateway_events(sio: AsyncServer):
                         "client_ip": client_ip,
                     },
                 )
-                await sio.emit(
-                    "connection",
-                    {
-                        "type": "onboarding",
-                        "client_id": client_id,
-                        "sender": "bot",
-                        "message": "Hey there! How can I help you?",
-                        "timestamp": utc_now().isoformat(),
-                    },
-                    room=sid,
-                )
-                logger.info("Session established for %s", client_id)
+                clients_list = await get_clients()
+                logger.info("Current clients: %s", clients_list)
+                if client_id not in clients_list:
+                    await add_client(client_id)
+                    await sio.emit(
+                        "connection",
+                        {
+                            "type": "onboarding",
+                            "client_id": client_id,
+                            "sender": "bot",
+                            "message": "Hey there! How can I help you?",
+                            "timestamp": utc_now().isoformat(),
+                        },
+                        room=sid,
+                    )
+                    logger.info("Session established for %s", client_id)
+
                 return True
 
             except (KeyError, AttributeError, TypeError, ValueError) as e:
