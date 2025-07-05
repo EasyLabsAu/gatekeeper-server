@@ -4,6 +4,7 @@ from socketio import AsyncServer
 from src.helpers.cache import Cache
 from src.helpers.logger import Logger
 from src.helpers.model import utc_now
+from src.models.chat import Chat, ChatType
 
 logger = Logger(__name__)
 
@@ -53,15 +54,17 @@ def gateway_events(sio: AsyncServer):
                 logger.info("Current clients: %s", clients_list)
                 if client_id not in clients_list:
                     await add_client(client_id)
+                    initial_message = Chat(
+                        type=ChatType.ONBOARDING,
+                        client_id=client_id,
+                        sender="bot",
+                        message="Hey there! How can I help you?",
+                        timestamp=utc_now().isoformat(),
+                        form=None,
+                    )
                     await sio.emit(
                         "connection",
-                        {
-                            "type": "onboarding",
-                            "client_id": client_id,
-                            "sender": "bot",
-                            "message": "Hey there! How can I help you?",
-                            "timestamp": utc_now().isoformat(),
-                        },
+                        initial_message.model_dump(),
                         room=sid,
                     )
                     logger.info("Session established for %s", client_id)

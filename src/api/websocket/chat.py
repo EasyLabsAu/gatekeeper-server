@@ -12,6 +12,7 @@ from src.helpers.constants import (
 from src.helpers.events import events
 from src.helpers.logger import Logger
 from src.helpers.model import utc_now
+from src.models.chat import Chat, ChatType
 from src.models.sessions import SessionCreate, SessionUpdate
 from src.repositories.sessions import SessionRepository
 from src.services.chatbot.core import Chatbot
@@ -27,6 +28,12 @@ async def set_session_id(client_id: str, session_id: str):
 
 async def get_session_id(client_id: str) -> str | None:
     return await cache.get(f"sessions:{client_id}")
+
+
+async def delete_sessions(client_id: str):
+    await cache.delete(
+        f"sessions:{client_id}",
+    )
 
 
 async def get_transcriptions(client_id: str) -> list[dict]:
@@ -54,9 +61,17 @@ async def delete_transcriptions(client_id: str):
     )
 
 
-async def delete_sessions(client_id: str):
+async def set_form_id(client_id: str, form_id: str):
+    await cache.set(f"forms:{client_id}", form_id)
+
+
+async def get_form_id(client_id: str) -> str | None:
+    return await cache.get(f"forms:{client_id}")
+
+
+async def delete_forms(client_id: str):
     await cache.delete(
-        f"sessions:{client_id}",
+        f"forms:{client_id}",
     )
 
 
@@ -100,23 +115,25 @@ def chat_events(sio: AsyncServer):
                     if not transcriptions:
                         await append_transcription(
                             client_id,
-                            {
-                                "type": "onboarding",
-                                "client_id": client_id,
-                                "sender": "bot",
-                                "message": "Hey there! How can I help you?",
-                                "timestamp": utc_now().isoformat(),
-                            },
+                            Chat(
+                                type=ChatType.ONBOARDING,
+                                client_id=client_id,
+                                sender="bot",
+                                message="Hey there! How can I help you?",
+                                timestamp=utc_now().isoformat(),
+                                form=None,
+                            ).model_dump(),
                         )
                     await append_transcription(
                         client_id,
-                        {
-                            "type": "engagement",
-                            "client_id": client_id,
-                            "sender": sender,
-                            "message": user_message,
-                            "timestamp": utc_now().isoformat(),
-                        },
+                        Chat(
+                            type=ChatType.ENGAGEMENT,
+                            client_id=client_id,
+                            sender="user",
+                            message=user_message,
+                            timestamp=utc_now().isoformat(),
+                            form=None,
+                        ).model_dump(),
                     )
 
                     repository = SessionRepository()
@@ -127,6 +144,7 @@ def chat_events(sio: AsyncServer):
                         session_data = SessionCreate(
                             transcription=current_transcriptions,
                             meta_data={
+                                "client_fingerprint": client_id,
                                 "user_agent": socket_session.get(
                                     "user_agent", "unknown"
                                 ),
@@ -142,14 +160,15 @@ def chat_events(sio: AsyncServer):
 
                     chatbot = Chatbot(session_id=str(session_id))
                     bot_response = await chatbot.get_response(user_message)
-                    response = {
-                        "type": "engagement",
-                        "client_id": client_id,
-                        "sender": "bot",
-                        "message": bot_response,
-                        "timestamp": utc_now().isoformat(),
-                    }
-                    await append_transcription(client_id, response)
+                    bot_message = Chat(
+                        type=ChatType.ENGAGEMENT,
+                        client_id=client_id,
+                        sender="bot",
+                        message=bot_response,
+                        timestamp=utc_now().isoformat(),
+                        form=None,
+                    )
+                    await append_transcription(client_id, bot_message.model_dump())
 
                     current_transcriptions = await get_transcriptions(client_id)
                     if session_id:
@@ -167,7 +186,7 @@ def chat_events(sio: AsyncServer):
                     )
                     await sio.emit(
                         "chat",
-                        response,
+                        bot_message.model_dump(),
                         room=sid,
                     )
                 else:
