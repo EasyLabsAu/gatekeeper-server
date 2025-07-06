@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import aiofiles
 import nltk
 import numpy as np
 import spacy
@@ -99,10 +100,12 @@ def load_spacy_model(model_name: str) -> Language | None:
 EXIT_KEYWORDS = ["exit", "cancel", "stop", "nevermind", "bye"]
 
 
-def precompute_embeddings(nlp_model: Language):
+async def precompute_embeddings(nlp_model: Language):
     logger.info("Loading intents from %s...", INTENTS_FILE)
-    with open(INTENTS_FILE, encoding="utf-8") as f:
-        intents_data = json.load(f)
+
+    async with aiofiles.open(INTENTS_FILE, encoding="utf-8") as f:
+        content = await f.read()
+        intents_data = json.loads(content)
 
     patterns = []
     intent_labels = []
@@ -125,24 +128,22 @@ def precompute_embeddings(nlp_model: Language):
         return
 
     embedding_dim = len(pattern_embeddings[0])
-
-    annoy_index = AnnoyIndex(
-        embedding_dim, "angular"
-    )  # angular distance is cosine similarity
+    annoy_index = AnnoyIndex(embedding_dim, "angular")
     for i, vec in enumerate(pattern_embeddings):
         annoy_index.add_item(i, vec)
 
     logger.info("Building Annoy index...")
-    annoy_index.build(10)  # 10 trees for good balance between speed and accuracy
+    annoy_index.build(10)
 
     annoy_index.save(str(ANNOY_INDEX_FILE))
     logger.info("Annoy index saved to %s", ANNOY_INDEX_FILE)
 
     intent_mapping = {i: (intent_labels[i], patterns[i]) for i in range(len(patterns))}
-    with open(EMBEDDINGS_FILE, "wb") as f:
-        pickle.dump(intent_mapping, f)
-    logger.info("Intent mapping saved to %s", EMBEDDINGS_FILE)
 
+    async with aiofiles.open(EMBEDDINGS_FILE, mode="wb") as f:
+        await f.write(pickle.dumps(intent_mapping))
+
+    logger.info("Intent mapping saved to %s", EMBEDDINGS_FILE)
     logger.info("Pre-computation complete.")
 
 
@@ -206,24 +207,49 @@ class Chatbot:
                 self.embedding_dim,
             )
 
-        self._load_intent_assets()
+        self.intents_data = {}
+        self.annoy_index = None
+        self.intent_mapping = {}
+        self._assets_loaded = False
 
-    def _load_intent_assets(self):
+    async def _load_intent_assets(self):
+        if self._assets_loaded:
+            return
+
         if not ANNOY_INDEX_FILE.exists() or not EMBEDDINGS_FILE.exists():
             logger.info(
                 "Pre-computed embeddings or Annoy index not found. Running pre-computation..."
             )
             initialize_nltk_data()
-            precompute_embeddings(self.nlp)
+            await precompute_embeddings(self.nlp)
 
-        self.annoy_index = AnnoyIndex(self.embedding_dim, "angular")
-        self.annoy_index.load(str(ANNOY_INDEX_FILE))
+        try:
+            self.annoy_index = AnnoyIndex(self.embedding_dim, "angular")
+            self.annoy_index.load(str(ANNOY_INDEX_FILE))
+        except Exception as e:
+            logger.error("Failed to load Annoy index: %s", e)
+            return
 
-        with open(EMBEDDINGS_FILE, "rb") as f:
-            self.intent_mapping = pickle.load(f)
+        try:
+            async with aiofiles.open(EMBEDDINGS_FILE, mode="rb") as f:
+                data = await f.read()
+                self.intent_mapping = pickle.loads(data)
+        except Exception as e:
+            logger.error("Failed to load intent embeddings: %s", e)
+            self.annoy_index = None  # Invalidate if related data fails to load
+            return
 
-        with open(INTENTS_FILE, encoding="utf-8") as f:
-            self.intents_data = json.load(f)
+        try:
+            async with aiofiles.open(INTENTS_FILE, encoding="utf-8") as f:
+                content = await f.read()
+                self.intents_data = json.loads(content)
+        except Exception as e:
+            logger.error("Failed to load intents data: %s", e)
+            self.annoy_index = None  # Invalidate if related data fails to load
+            self.intent_mapping = {}
+            return
+
+        self._assets_loaded = True
 
     async def load_context(self):
         context = await self.cache.get(self.session_id)
@@ -242,6 +268,10 @@ class Chatbot:
 
     def _recognize_intent(self, text: str, top_n=5) -> tuple[str, float, list]:
         if not text.strip():
+            return "invalid", 0.0, []
+
+        if not self.annoy_index:
+            logger.warning("Annoy index not loaded. Cannot recognize intent.")
             return "invalid", 0.0, []
 
         text_embedding = self.nlp(text).vector
@@ -490,6 +520,7 @@ class Chatbot:
 
     async def get_response(self, user_input: str, form: dict | None = None) -> str:
         await self.load_context()
+        await self._load_intent_assets()
         response = ""
         try:
             if not isinstance(user_input, str) or not user_input.strip():

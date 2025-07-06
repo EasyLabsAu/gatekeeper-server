@@ -5,10 +5,21 @@
 groups = ["default", "dev", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:954f7f3246c849cfc926bd44f3c15fdb662afd5eaf87de85444a5bf672077496"
+content_hash = "sha256:096ada7e04f4d619dfd960fde521f2e56d6234c6629db3a215f0ac52fbf1ffe0"
 
 [[metadata.targets]]
 requires_python = ">=3.10"
+
+[[package]]
+name = "aiofiles"
+version = "24.1.0"
+requires_python = ">=3.8"
+summary = "File support for asyncio."
+groups = ["default"]
+files = [
+    {file = "aiofiles-24.1.0-py3-none-any.whl", hash = "sha256:b4ec55f4195e3eb5d7abd1bf7e061763e864dd4954231fb8539a0ef8bb8260e5"},
+    {file = "aiofiles-24.1.0.tar.gz", hash = "sha256:22a075c9e5a3810f0c2e48f3008c94d68c65d763b9b03857924c99e57355166c"},
+]
 
 [[package]]
 name = "aioredis"

@@ -33,7 +33,8 @@ dependencies = [
     "python-Levenshtein>=0.27.1",
     "annoy>=1.17.3",
     "redis>=6.2.0",
-    "aioredis>=2.0.1"
+    "aioredis>=2.0.1",
+    "aiofiles>=24.1.0"
 ]
 
 [dependency-groups]
