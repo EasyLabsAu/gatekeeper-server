@@ -396,6 +396,7 @@ class Chatbot:
             "completion_message": completion_message,
             "current_question_index": 0,
             "is_active": True,
+            "current_question_invalid_attempts": 0,
         }
         self.context["current_form_id"] = str(form.get("id"))
         self.context["form_responses_id"] = None
@@ -408,31 +409,42 @@ class Chatbot:
         if not current_question:
             self._deactivate_flow()
             return "It seems there was an issue with the form. Let's start over."
-
         validation_error = self._validate_answer(user_input, current_question)
+
         if validation_error:
-            self.context["invalid_answer_count"] = (
-                self.context.get("invalid_answer_count", 0) + 1
-            )
-            if self.context["invalid_answer_count"] >= 3:
+            self.context["conversation_flow"]["current_question_invalid_attempts"] += 1
+            if (
+                self.context["conversation_flow"]["current_question_invalid_attempts"]
+                >= 3
+            ):
                 self._deactivate_flow()
-                self.context["invalid_answer_count"] = 0
+                self.context["conversation_flow"][
+                    "current_question_invalid_attempts"
+                ] = 0
                 return "It seems you're having trouble. Let's try something else. What would you like to do?"
-            return f"{validation_error}. {current_question.text}"
 
-        self.context["invalid_answer_count"] = 0
-        await self._save_form_response(user_input, current_question)
+            if (
+                self.context["conversation_flow"]["current_question_invalid_attempts"]
+                == 1
+            ):
+                return current_question.text
+            else:
+                return f"{validation_error}\n{current_question.text}"
+        else:
+            self.context["conversation_flow"]["current_question_invalid_attempts"] = 0
+            await self._save_form_response(user_input, current_question)
 
-        flow = self.context["conversation_flow"]
-        flow["current_question_index"] += 1
+            flow = self.context["conversation_flow"]
+            flow["current_question_index"] += 1
+            self.context["conversation_flow"]["current_question_invalid_attempts"] = 0
 
-        if flow["current_question_index"] >= len(flow["questions"]):
-            self._deactivate_flow()
-            await self._finalize_form_submission()
-            return flow["completion_message"]
+            if flow["current_question_index"] >= len(flow["questions"]):
+                self._deactivate_flow()
+                await self._finalize_form_submission()
+                return flow["completion_message"]
 
-        next_question = self._get_current_question()
-        return next_question.text if next_question else "Something went wrong."
+            next_question = self._get_current_question()
+            return next_question.text if next_question else "Something went wrong."
 
     async def _save_form_response(self, answer: str, question: Question):
         form_responses_id_str = self.context.get("form_responses_id")
@@ -507,7 +519,7 @@ class Chatbot:
             if field_type == FormFieldTypes.SINGLE_CHOICE.value:
                 if answer.lower() not in options:
                     return f"Please choose one of the following options: {', '.join(question.options or [])}"
-            else:  # MULTIPLE_CHOICE
+            else:
                 chosen_options = [opt.strip().lower() for opt in answer.split(",")]
                 if any(opt not in options for opt in chosen_options):
                     return f"One or more of your choices are not valid. Please choose from: {', '.join(question.options or [])}"
