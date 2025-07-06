@@ -503,14 +503,14 @@ class Chatbot:
             FormFieldTypes.SINGLE_CHOICE.value,
             FormFieldTypes.MULTIPLE_CHOICE.value,
         ]:
-            options = question.options or []
+            options = [opt.lower() for opt in (question.options or [])]
             if field_type == FormFieldTypes.SINGLE_CHOICE.value:
-                if answer not in options:
-                    return f"Please choose one of the following options: {', '.join(options)}"
+                if answer.lower() not in options:
+                    return f"Please choose one of the following options: {', '.join(question.options or [])}"
             else:  # MULTIPLE_CHOICE
-                chosen_options = [opt.strip() for opt in answer.split(",")]
+                chosen_options = [opt.strip().lower() for opt in answer.split(",")]
                 if any(opt not in options for opt in chosen_options):
-                    return f"One or more of your choices are not valid. Please choose from: {', '.join(options)}"
+                    return f"One or more of your choices are not valid. Please choose from: {', '.join(question.options or [])}"
         elif field_type == FormFieldTypes.DATETIME.value:
             try:
                 datetime.fromisoformat(answer)
@@ -545,7 +545,7 @@ class Chatbot:
                 self.last_intent = "form_started"
                 return response or "Something went wrong starting the form."
 
-            intent, _, _ = self._recognize_intent(user_input)
+            intent, _, _ = self._recognize_intent(user_input.lower())
             logger.info("Final intent recognized: %s", intent)
             self.last_intent = intent
 
