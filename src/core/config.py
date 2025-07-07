@@ -36,6 +36,26 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
 
+    @computed_field
+    @property
+    def REDIS_URI(self) -> MultiHostUrl:
+        if self.REDIS_USER != "" and self.REDIS_PASSWORD != "":
+            return MultiHostUrl.build(
+                scheme="redis",
+                username=self.REDIS_USER,
+                password=self.REDIS_PASSWORD,
+                host=self.REDIS_HOST,
+                port=self.REDIS_PORT,
+                path=f"/{self.REDIS_DB}",
+            )
+        else:
+            return MultiHostUrl.build(
+                scheme="redis",
+                host=self.REDIS_HOST,
+                port=self.REDIS_PORT,
+                path=f"/{self.REDIS_DB}",
+            )
+
     # CORS settings
     CORS_ORIGINS: list[str] = []  # Comma-separated list of allowed origins
 

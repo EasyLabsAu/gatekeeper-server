@@ -4,12 +4,15 @@ from typing import Any
 import socketio
 from socketio import ASGIApp, AsyncServer
 
+from src.core.config import settings
 from src.helpers.constants import WEBSOCKET_API_PREFIX
 from src.helpers.logger import Logger
 
 logger = Logger(__name__)
 
 MiddlewareSpec = tuple[type[Any], dict[str, Any]]
+
+state_manager = socketio.AsyncRedisManager(str(settings.REDIS_URI))
 
 
 class SOCKET_GATEWAY:
@@ -23,6 +26,11 @@ class SOCKET_GATEWAY:
             cors_allowed_origins=[],
             logger=True,
             engineio_logger=True,
+            client_manager=state_manager,
+            connectionStateRecovery={
+                "maxDisconnectionDuration": 5 * 60 * 1000,
+                "skipMiddlewares": True,
+            },
         )
         self.asgisocket = ASGIApp(self.sio, socketio_path=WEBSOCKET_API_PREFIX)
         if middlewares:

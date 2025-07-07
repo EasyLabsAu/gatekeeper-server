@@ -31,7 +31,10 @@ dependencies = [
     "pip>=25.1.1",
     "fuzzywuzzy>=0.18.0",
     "python-Levenshtein>=0.27.1",
-    "annoy>=1.17.3"
+    "annoy>=1.17.3",
+    "redis>=6.2.0",
+    "aioredis>=2.0.1",
+    "aiofiles>=24.1.0"
 ]
 
 [dependency-groups]
@@ -49,9 +52,10 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm.scripts]
-seed = "src.scripts.seed:main"
-dev = "pdm run uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080 --log-level debug"
-prod = "pdm run uvicorn src.server:app --lifespan on --host 0.0.0.0 --port 8080 --workers 4 --log-level info" 
+seed = "python -m src.scripts.seed"
+precompute = "python -m src.scripts.precompute"
+dev = """pdm run uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080 --log-level debug --forwarded-allow-ips='*' --proxy-headers"""
+prod = """pdm run uvicorn src.server:app --lifespan on --host 0.0.0.0 --port 8080 --workers 4 --log-level info --forwarded-allow-ips='*' --proxy-headers"""
 migrate-up = "alembic upgrade head"
 migrate-down = "alembic downgrade -1"
 make-migration = "alembic revision --autogenerate -m \"%(message)s\""
