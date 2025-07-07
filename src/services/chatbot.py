@@ -398,8 +398,8 @@ class Chatbot:
             "is_active": True,
             "current_question_invalid_attempts": 0,
         }
-        self.context["current_form_id"] = str(form.get("id"))
-        self.context["form_responses_id"] = None
+        self.context["form_id"] = str(form.get("id"))
+        self.context["form_responses"] = {}
 
         current_question = self._get_current_question()
         return current_question.text if current_question else completion_message
@@ -438,7 +438,7 @@ class Chatbot:
             if flow["current_question_index"] >= len(flow["questions"]) - 1:
                 completion_message = flow["completion_message"]
                 self._deactivate_flow()
-                self.context.pop("current_form_id", None)
+                self.context.pop("form_id", None)
                 await self._finalize_form_submission()
                 return completion_message
             else:
@@ -447,34 +447,6 @@ class Chatbot:
                 return next_question.text if next_question else "Something went wrong."
 
     async def _save_form_response(self, answer: str, question: Question):
-        form_responses_id_str = self.context.get("form_responses_id")
-        current_form_id_str = self.context.get("current_form_id")
-
-        if not form_responses_id_str:
-            new_form_response_id = str(UUID(int=random.randint(0, 2**32 - 1)))
-            self.context["form_responses_id"] = new_form_response_id
-            form_responses_id = new_form_response_id
-            logger.info("--- New Form Response ---")
-            logger.info(f"  Form Response ID: {form_responses_id}")
-            logger.info(f"  Form ID: {current_form_id_str}")
-            logger.info(f"  Session ID: {self.session_id}")
-        else:
-            form_responses_id = form_responses_id_str
-
-        if "section_responses" not in self.context:
-            self.context["section_responses"] = {}
-
-        section_id_str = str(question.section_id)
-        if section_id_str not in self.context["section_responses"]:
-            new_section_response_id = str(UUID(int=random.randint(0, 2**32 - 1)))
-            self.context["section_responses"][section_id_str] = new_section_response_id
-            logger.info("--- New Section Response ---")
-            logger.info(f"  Section Response ID: {new_section_response_id}")
-            logger.info(f"  Form Response ID: {form_responses_id}")
-            logger.info(f"  Section ID: {section_id_str}")
-
-        section_response_id = self.context["section_responses"][section_id_str]
-
         if question.field_type == FormFieldTypes.DATETIME.value:
             try:
                 # Try YYYY-MM-DD format first
@@ -486,26 +458,20 @@ class Chatbot:
         else:
             processed_answer = answer
 
-        question_response = {
-            "section_response_id": section_response_id,
-            "question_id": str(question.question_id),
-            "answer": processed_answer,
-            "submitted_at": datetime.now().isoformat(),
-        }
-        logger.info("--- New Question Response ---")
-        logger.info(json.dumps(question_response, indent=2))
+        self.context["form_responses"][question.text] = processed_answer
+        logger.info(f"  Question: {question.text}")
+        logger.info(f"  Answer: {processed_answer}")
 
     async def _finalize_form_submission(self):
-        form_responses_id_str = self.context.get("form_responses_id")
-        if form_responses_id_str:
+        form_responses = self.context.get("form_responses")
+        if form_responses:
             logger.info("--- Form Submission Finalized ---")
-            logger.info(f"  Form Response ID: {form_responses_id_str}")
+            logger.info(f"  Form Responses: {json.dumps(form_responses, indent=2)}")
             logger.info(f"  Submitted At: {datetime.now().isoformat()}")
 
-        self.context["current_form_id"] = None
-        self.context["form_responses_id"] = None
-        if "section_responses" in self.context:
-            del self.context["section_responses"]
+        self.context["form_id"] = None
+        if "form_responses" in self.context:
+            del self.context["form_responses"]
 
     def _validate_answer(self, answer: str, question: Question) -> str | None:
         if question.required and not answer.strip():
@@ -559,33 +525,33 @@ class Chatbot:
                 return {
                     "sender": sender,
                     "timestamp": timestamp,
-                    "form": self.context.get("current_form_id"),
+                    "form": self.context.get("form_id"),
                     "message": random.choice(self._get_responses("invalid")),
                 }
 
             if any(keyword in user_input.lower() for keyword in EXIT_KEYWORDS):
                 if self._is_flow_active():
                     self._deactivate_flow()
-                    self.context.pop("current_form_id", None)
+                    self.context.pop("form_id", None)
                     self.last_intent = "invalid"
                     response = "Okay, cancelling that. What would you like to do?"
                     return {
                         "sender": sender,
                         "timestamp": timestamp,
-                        "form": self.context.get("current_form_id"),
+                        "form": self.context.get("form_id"),
                         "message": response,
                     }
 
-            if self._is_flow_active() and self.context.get("current_form_id"):
+            if self._is_flow_active() and self.context.get("form_id"):
                 response = await self._process_form_answer(user_input)
                 return {
                     "sender": sender,
                     "timestamp": timestamp,
-                    "form": self.context.get("current_form_id"),
+                    "form": self.context.get("form_id"),
                     "message": response,
                 }
 
-            if self._is_flow_active() and not self.context.get("current_form_id"):
+            if self._is_flow_active() and not self.context.get("form_id"):
                 self._deactivate_flow()
 
             if form:
@@ -597,7 +563,7 @@ class Chatbot:
                 return {
                     "sender": sender,
                     "timestamp": timestamp,
-                    "form": self.context.get("current_form_id"),
+                    "form": self.context.get("form_id"),
                     "message": response,
                 }
 
@@ -625,7 +591,7 @@ class Chatbot:
             return {
                 "sender": sender,
                 "timestamp": timestamp,
-                "form": self.context.get("current_form_id"),
+                "form": self.context.get("form_id"),
                 "message": response,
             }
 
