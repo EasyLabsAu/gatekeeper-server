@@ -42,6 +42,10 @@ def create_app() -> FastAPI:
             settings.POSTGRES_URI,
         )
         logger.info(
+            "Cache: %s",
+            settings.REDIS_URI,
+        )
+        logger.info(
             "CORS Origins: %s",
             settings.CORS_ORIGINS,
         )
