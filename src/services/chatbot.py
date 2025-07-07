@@ -8,7 +8,6 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from src.helpers.model import utc_now
 from uuid import UUID
 
 import aiofiles
@@ -20,6 +19,7 @@ from spacy.language import Language
 
 from src.helpers.cache import Cache, PickleSerializer
 from src.helpers.logger import Logger
+from src.helpers.model import utc_now
 from src.models.forms import (
     FormFieldTypes,
     FormRead,
@@ -399,7 +399,7 @@ class Chatbot:
             "current_question_invalid_attempts": 0,
         }
         self.context["form_id"] = str(form.get("id"))
-        self.context["form_responses"] = {}
+        self.context["form_responses"] = []
 
         current_question = self._get_current_question()
         return current_question.text if current_question else completion_message
@@ -458,14 +458,34 @@ class Chatbot:
         else:
             processed_answer = answer
 
-        self.context["form_responses"][question.text] = processed_answer
-        logger.info(f"  Question: {question.text}")
+        form_responses = self.context.get("form_responses", [])
+        question_id_str = str(question.question_id)
+        form_id = self.context.get("form_id")
+
+        found = False
+        for response in form_responses:
+            if response.get("question_id") == question_id_str:
+                response["answer"] = processed_answer
+                found = True
+                break
+
+        if not found:
+            form_responses.append(
+                {
+                    "question_id": question_id_str,
+                    "question": question.text,
+                    "answer": processed_answer,
+                    "form_id": form_id,
+                }
+            )
+
+        self.context["form_responses"] = form_responses
+        logger.info(f" Question: {question.text}")
         logger.info(f"  Answer: {processed_answer}")
 
     async def _finalize_form_submission(self):
         form_responses = self.context.get("form_responses")
         if form_responses:
-            logger.info("--- Form Submission Finalized ---")
             logger.info(f"  Form Responses: {json.dumps(form_responses, indent=2)}")
             logger.info(f"  Submitted At: {datetime.now().isoformat()}")
 
@@ -512,13 +532,19 @@ class Chatbot:
 
     async def get_response(
         self, user_input: str, form: FormRead | None = None
-    ) -> dict[str, str | None]:
+    ) -> dict[str, str | None | dict]:
         await self.load_context()
         await self._load_intent_assets()
         logger.info("User input: %s", user_input)
         response = "Hey there! How can I help you?"
         sender = "bot"
         timestamp = utc_now().isoformat()
+        meta_data = None
+
+        if self.context.get("form_responses"):
+            meta_data = {
+                "form_responses": self.context.get("form_responses"),
+            }
 
         try:
             if not isinstance(user_input, str) or not user_input.strip():
@@ -527,6 +553,7 @@ class Chatbot:
                     "timestamp": timestamp,
                     "form": self.context.get("form_id"),
                     "message": random.choice(self._get_responses("invalid")),
+                    "meta_data": meta_data,
                 }
 
             if any(keyword in user_input.lower() for keyword in EXIT_KEYWORDS):
@@ -540,6 +567,7 @@ class Chatbot:
                         "timestamp": timestamp,
                         "form": self.context.get("form_id"),
                         "message": response,
+                        "meta_data": meta_data,
                     }
 
             if self._is_flow_active() and self.context.get("form_id"):
@@ -549,6 +577,7 @@ class Chatbot:
                     "timestamp": timestamp,
                     "form": self.context.get("form_id"),
                     "message": response,
+                    "meta_data": meta_data,
                 }
 
             if self._is_flow_active() and not self.context.get("form_id"):
@@ -565,6 +594,7 @@ class Chatbot:
                     "timestamp": timestamp,
                     "form": self.context.get("form_id"),
                     "message": response,
+                    "meta_data": meta_data,
                 }
 
             intent, _, _ = self._recognize_intent(user_input.lower())
@@ -593,6 +623,7 @@ class Chatbot:
                 "timestamp": timestamp,
                 "form": self.context.get("form_id"),
                 "message": response,
+                "meta_data": meta_data,
             }
 
         finally:

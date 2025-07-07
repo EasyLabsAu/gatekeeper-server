@@ -184,11 +184,9 @@ class FormQuestionsQuery(BaseModel):
 
 # Stores one user's overall submission of a form
 class FormResponses(BaseModel, table=True):
-    form_id: UUID = Field(foreign_key="forms.id")  # Reference to the original form
-    session_id: UUID = Field(
-        foreign_key="sessions.id"
-    )  # Reference to the session this response belongs to
-    submitted_at: str | None = None
+    form_id: UUID = Field(foreign_key="forms.id")
+    session_id: UUID = Field(foreign_key="sessions.id")
+    submitted_at: datetime | None
 
     form: "Forms" = Relationship(back_populates="responses")
     section_responses: list["FormSectionResponses"] = Relationship(
@@ -199,14 +197,14 @@ class FormResponses(BaseModel, table=True):
 class FormResponsesCreate(SQLModel):
     form_id: UUID
     session_id: UUID
-    submitted_at: str | None = None
+    submitted_at: datetime | None
 
 
 class FormResponsesRead(SQLModel):
     id: UUID
     form_id: UUID
     session_id: UUID
-    submitted_at: str
+    submitted_at: datetime | None
     created_at: datetime
     updated_at: datetime | None
 
@@ -214,7 +212,7 @@ class FormResponsesRead(SQLModel):
 class FormResponsesUpdate(SQLModel):
     form_id: UUID
     session_id: UUID
-    submitted_at: str | None = None
+    submitted_at: datetime | None
 
 
 class FormResponsesQuery(BaseModel):
@@ -263,18 +261,10 @@ class FormSectionResponsesQuery(BaseModel):
 
 # Stores user's answer to a specific question in a section
 class FormQuestionResponses(BaseModel, table=True):
-    section_response_id: UUID = Field(
-        foreign_key="formsectionresponses.id"
-    )  # Which section this answer belongs to
-    question_id: UUID = Field(
-        foreign_key="formquestions.id"  # This now correctly references the table name
-    )  # Which question this is an answer to
-
-    # User's actual answer (can be string, number, datetime, etc. — stored as JSON)
+    section_response_id: UUID = Field(foreign_key="formsectionresponses.id")
+    question_id: UUID = Field(foreign_key="formquestions.id")
     answer: str
-    # Timestamp when the answer was submitted
-    submitted_at: str | None = None
-
+    submitted_at: datetime | None
     section_response: "FormSectionResponses" = Relationship(
         back_populates="question_responses"
     )
@@ -285,7 +275,7 @@ class FormQuestionResponsesCreate(SQLModel):
     section_response_id: UUID
     question_id: UUID
     answer: str
-    submitted_at: str | None = None
+    submitted_at: datetime | None
 
 
 class FormQuestionResponsesRead(SQLModel):
@@ -293,7 +283,7 @@ class FormQuestionResponsesRead(SQLModel):
     section_response_id: UUID
     question_id: UUID
     answer: str
-    submitted_at: UUID
+    submitted_at: datetime | None
     created_at: datetime
     updated_at: datetime | None
 
@@ -302,7 +292,7 @@ class FormQuestionResponsesUpdate(SQLModel):
     section_response_id: UUID
     question_id: UUID
     answer: str
-    submitted_at: UUID
+    submitted_at: datetime | None
 
 
 class FormQuestionResponsesQuery(BaseModel):

@@ -477,7 +477,7 @@ class FormSectionResponseRepository(BaseRepository):
     ) -> APIResponse[FormSectionResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            section_response = FormSectionResponsesCreate(**payload.model_dump())
+            section_response = FormSectionResponses(**payload.model_dump())
             db.add(section_response)
             await db.commit()
             await db.refresh(section_response)
@@ -578,7 +578,7 @@ class FormQuestionResponseRepository(BaseRepository):
     ) -> APIResponse[FormQuestionResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            question_response = FormQuestionResponsesCreate(**payload.model_dump())
+            question_response = FormQuestionResponses(**payload.model_dump())
             db.add(question_response)
             await db.commit()
             await db.refresh(question_response)
