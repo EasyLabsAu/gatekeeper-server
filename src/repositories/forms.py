@@ -401,15 +401,35 @@ class FormResponseRepository(BaseRepository):
     ) -> APIResponse[list[FormResponsesRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            # TODO : Add custom filters based query
-            statement = select(FormResponses)
-            statement = statement.offset(skip).limit(limit)
+            filters = []
+            if query.form_id:
+                filters.append(FormResponses.form_id == query.form_id)
+            if query.session_id:
+                filters.append(FormResponses.session_id == query.session_id)
+
+            statement = (
+                select(FormResponses)
+                .options(
+                    selectinload(
+                        getattr(FormResponses, "section_responses")
+                    ).selectinload(getattr(FormSectionResponses, "question_responses"))
+                )
+                .offset(skip)
+                .limit(limit)
+            )
+
+            if filters:
+                statement = statement.where(*filters)
+
             result = await db.execute(statement)
-            responses = result.scalars().all()
+            responses = result.scalars().unique().all()
             data = [
                 FormResponsesRead.model_validate(response) for response in responses
             ]
-            return APIResponse[list[FormResponsesRead]](data=data)
+            return APIResponse[list[FormResponsesRead]](
+                data=data,
+                meta={"skip": skip, "limit": limit, "count": len(data)},
+            )
         finally:
             await self.close_database_session()
 
@@ -494,15 +514,22 @@ class FormSectionResponseRepository(BaseRepository):
     ) -> APIResponse[list[FormSectionResponsesRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            # TODO : Add custom filters based query
-            statement = select(FormSectionResponses)
-            statement = statement.offset(skip).limit(limit)
+            statement = (
+                select(FormSectionResponses)
+                .where(FormSectionResponses.response_id == query.response_id)
+                .options(selectinload(getattr(FormSectionResponses, "question_responses")))
+                .offset(skip)
+                .limit(limit)
+            )
             result = await db.execute(statement)
-            section_responses = result.scalars().all()
+            section_responses = result.scalars().unique().all()
             data = [
                 FormSectionResponsesRead.model_validate(sr) for sr in section_responses
             ]
-            return APIResponse[list[FormSectionResponsesRead]](data=data)
+            return APIResponse[list[FormSectionResponsesRead]](
+                data=data,
+                meta={"skip": skip, "limit": limit, "count": len(data)},
+            )
         finally:
             await self.close_database_session()
 
@@ -595,8 +622,9 @@ class FormQuestionResponseRepository(BaseRepository):
     ) -> APIResponse[list[FormQuestionResponsesRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            # TODO : Add custom filters based query
-            statement = select(FormQuestionResponses)
+            statement = select(FormQuestionResponses).where(
+                FormQuestionResponses.section_response_id == query.section_response_id
+            )
             statement = statement.offset(skip).limit(limit)
             result = await db.execute(statement)
             question_responses = result.scalars().all()
@@ -604,7 +632,10 @@ class FormQuestionResponseRepository(BaseRepository):
                 FormQuestionResponsesRead.model_validate(qr)
                 for qr in question_responses
             ]
-            return APIResponse[list[FormQuestionResponsesRead]](data=data)
+            return APIResponse[list[FormQuestionResponsesRead]](
+                data=data,
+                meta={"skip": skip, "limit": limit, "count": len(data)},
+            )
         finally:
             await self.close_database_session()
 
