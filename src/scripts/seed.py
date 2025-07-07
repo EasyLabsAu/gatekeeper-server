@@ -1,3 +1,8 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+
 from sqlmodel import Session, SQLModel, create_engine
 
 from src.core.config import settings
@@ -20,6 +25,7 @@ form_data = {
     "name": "Paint Job Request Form",
     "type": "survey",
     "description": "A form to collect details from homeowners about their paint job needs.",
+    "chat_meta_data": {"welcome_message": "Hello! I'm here to help you with your paint job request. Let's get started!", "farewell_message": "Thank you for providing the details. We'll be in touch soon!"},
 }
 
 sections_data = [
@@ -32,12 +38,14 @@ questions_data = {
     "Customer Info": [
         {
             "label": "Name",
+            "prompt": "What is your full name?",
             "field_type": FormFieldTypes.TEXT,
             "required": True,
             "order": 1,
         },
         {
             "label": "Phone Number",
+            "prompt": "Could you please provide your phone number?",
             "field_type": FormFieldTypes.NUMBER,
             "required": True,
             "order": 2,
@@ -46,6 +54,7 @@ questions_data = {
     "Job Details": [
         {
             "label": "Is this an exterior job?",
+            "prompt": "Is the paint job for the exterior of your property?",
             "field_type": FormFieldTypes.BOOLEAN,
             "required": True,
             "order": 1,
@@ -53,6 +62,7 @@ questions_data = {
         },
         {
             "label": "Preferred Date",
+            "prompt": "Do you have a preferred date for the job to start? Please provide it in YYYY-MM-DD format.",
             "field_type": FormFieldTypes.DATETIME,
             "required": False,
             "order": 2,
@@ -61,6 +71,7 @@ questions_data = {
     "Preferences": [
         {
             "label": "Paint Finish Type",
+            "prompt": "What type of paint finish are you looking for? (Matte, Eggshell, or Glossy)",
             "field_type": FormFieldTypes.SINGLE_CHOICE,
             "required": True,
             "order": 1,
@@ -68,6 +79,7 @@ questions_data = {
         },
         {
             "label": "Colors You Like",
+            "prompt": "Which colors are you considering? You can list multiple, separated by commas.",
             "field_type": FormFieldTypes.MULTIPLE_CHOICE,
             "required": False,
             "order": 2,
@@ -97,6 +109,7 @@ def main():
             type=form_data["type"],
             description=form_data["description"],
             created_by=provider.id,
+            chat_meta_data=form_data["chat_meta_data"],
         )
         session.add(form)
         session.commit()

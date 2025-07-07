@@ -6,26 +6,22 @@ from src.core.config import settings
 
 
 def Logger(name: str = settings.PROJECT_NAME) -> logging.Logger:
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG if settings.ENV == "development" else logging.INFO)
-    logger.propagate = False
+    log = logging.getLogger(name)
+    log.setLevel(logging.DEBUG if settings.ENV == "development" else logging.INFO)
+    log.propagate = False
 
-    # Clear existing handlers to avoid duplication
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    if log.hasHandlers():
+        log.handlers.clear()
 
-    # Format for both console and file
     formatter = logging.Formatter(
-        fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        fmt="%(levelname)s [%(asctime)s] [%(name)s:%(funcName)s:%(lineno)d] : %(message)s ",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # === Console Logging ===
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+    log.addHandler(console_handler)
 
-    # === File Logging (always on) ===
     log_dir = Path(settings.LOG_DIR)
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -35,10 +31,9 @@ def Logger(name: str = settings.PROJECT_NAME) -> logging.Logger:
         backupCount=settings.LOG_FILE_BACKUP_COUNT,
     )
     file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    log.addHandler(file_handler)
 
-    return logger
+    return log
 
 
-# Create and reuse a default logger instance
 logger = Logger()

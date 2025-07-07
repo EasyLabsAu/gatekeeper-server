@@ -15,7 +15,7 @@ from src.models.sessions import (
 )
 from src.repositories.sessions import SessionRepository
 
-session_router: APIRouter = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
+session_router: APIRouter = APIRouter(prefix="/sessions", tags=["sessions"])
 session_repository: SessionRepository = SessionRepository()
 
 

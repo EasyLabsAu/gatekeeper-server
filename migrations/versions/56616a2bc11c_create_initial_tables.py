@@ -1,8 +1,8 @@
 """create initial tables
 
-Revision ID: f7b659b1339b
+Revision ID: 56616a2bc11c
 Revises: 
-Create Date: 2025-06-30 18:11:00.955967
+Create Date: 2025-07-04 17:07:59.580035
 
 """
 from typing import Sequence, Union  # noqa: F401, UP035
@@ -15,7 +15,7 @@ from sqlmodel import AutoString
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'f7b659b1339b'
+revision: str = '56616a2bc11c'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -77,6 +77,7 @@ def upgrade() -> None:
     sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('created_by', sa.Uuid(), nullable=False),
     sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column('chat_meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.ForeignKeyConstraint(['created_by'], ['providers.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -101,12 +102,13 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.Column('deleted_at', sa.DateTime(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
-    sa.Column('consumer_id', sa.Uuid(), nullable=False),
-    sa.Column('form_id', sa.Uuid(), nullable=False),
-    sa.Column('status', sa.Enum('PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', name='sessionstatus'), nullable=True),
+    sa.Column('consumer_id', sa.Uuid(), nullable=True),
+    sa.Column('form_id', sa.Uuid(), nullable=True),
+    sa.Column('status', sa.Enum('ACTIVE', 'CONCLUDED', 'DISCARDED', name='sessionstatus'), nullable=True),
     sa.Column('transcription', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('initiated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('activated_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('concluded_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('discarded_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('tags', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('files', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('feedback', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
@@ -125,6 +127,7 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.Column('section_id', sa.Uuid(), nullable=False),
     sa.Column('label', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('prompt', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('field_type', sa.Enum('TEXT', 'NUMBER', 'BOOLEAN', 'DATETIME', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', name='formfieldtypes'), nullable=False),
     sa.Column('required', sa.Boolean(), nullable=False),
     sa.Column('order', sa.Integer(), nullable=False),

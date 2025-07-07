@@ -54,7 +54,9 @@ class Events:
         entry = ListenerEntry(listener, once, retry_attempts, retry_delay)
         with self._lock:
             self._events.setdefault(event, []).append(entry)
-            logger.info(f"Listener {listener} added to event: {event} (once={once})")
+            logger.info(
+                "Listener %r added to event: %s (once=%r)", listener, event, once
+            )
 
     def off(self, event: str, listener: Callable | None = None):
         with self._lock:
@@ -69,7 +71,7 @@ class Events:
     async def emit(self, event: str, *args: Any, **kwargs: Any):
         """Push the event to the internal queue (non-blocking for caller)."""
         await self._queue.put((event, args, kwargs))
-        logger.info(f"Event '{event}' enqueued")
+        logger.info("Event '%s' enqueued", event)
 
     async def _worker(self):
         logger.info("Event worker started")
@@ -78,14 +80,19 @@ class Events:
             try:
                 event, args, kwargs = await self._queue.get()
                 await self._handle_event(event, *args, **kwargs)
-            except Exception as e:
-                logger.exception(f"Exception in event worker: {e}")
+            except asyncio.CancelledError:
+                logger.info("Event worker cancelled")
+                break
+            except RuntimeError as e:
+                logger.error("RuntimeError in event worker: %r", e)
+            except (OSError, ValueError) as e:
+                logger.exception("Unexpected exception in event worker: %r", e)
 
     async def _handle_event(self, event: str, *args: Any, **kwargs: Any):
         with self._lock:
             listeners = list(self._events.get(event, []))
 
-        logger.info(f"Processing event '{event}' with {len(listeners)} listener(s)")
+        logger.info("Processing event '%s' with %d listener(s)", event, len(listeners))
 
         async def invoke(entry: ListenerEntry):
             attempts = entry.retry_attempts or self._default_retry_attempts
@@ -95,22 +102,27 @@ class Events:
             for attempt in range(1, attempts + 1):
                 try:
                     logger.info(
-                        f"Invoking listener '{name}' for event '{event}' (attempt {attempt})"
+                        "Invoking listener '%s' for event '%s' (attempt %d)",
+                        name,
+                        event,
+                        attempt,
                     )
                     # Check if the listener is a coroutine function
                     if asyncio.iscoroutinefunction(entry.listener):
                         await entry.listener(*args, **kwargs)
                     else:
                         entry.listener(*args, **kwargs)
-                    logger.info(f"Listener {name} succeeded on attempt {attempt}")
+                    logger.info("Listener %s succeeded on attempt %d", name, attempt)
                     break
-                except Exception as e:
-                    logger.error(f"Listener '{name}' failed (attempt {attempt}): {e}")
+                except (TypeError, ValueError, RuntimeError) as e:
+                    logger.error(
+                        "Listener '%s' failed (attempt %d): %r", name, attempt, e
+                    )
                     if attempt < attempts:
                         await asyncio.sleep(delay)
                     else:
                         logger.critical(
-                            f"Listener '{name}' gave up after {attempts} attempts"
+                            "Listener '%s' gave up after %d attempts", name, attempts
                         )
 
         await asyncio.gather(*(invoke(entry) for entry in listeners))

@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import Column, Text
@@ -11,8 +11,8 @@ from sqlmodel import Field, Relationship, SQLModel
 from src.helpers.model import BaseModel
 
 if TYPE_CHECKING:
-    from src.models.providers import Providers  # Assuming this is the right path
-    from src.models.sessions import Sessions  # Assuming this is the right path
+    from src.models.providers import Providers
+    from src.models.sessions import Sessions
 
 
 # Enum to define different types of form fields that a user can interact with
@@ -29,9 +29,12 @@ class FormFieldTypes(str, Enum):
 class Forms(BaseModel, table=True):
     name: str  # Title or name of the form
     type: str | None = None  # Type of the form (e.g., "feedback", "survey", etc.)
-    description: str | None = None  # Optional description of the form
+    description: str | None = None
     created_by: UUID = Field(foreign_key="providers.id")
     meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
+    chat_meta_data: dict[str, Any] = Field(
+        default_factory=dict, sa_column=Column(JSONB)
+    )
 
     sections: list["FormSections"] = Relationship(
         back_populates="form", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
@@ -43,6 +46,7 @@ class FormCreate(SQLModel):
     name: str
     description: str | None = None
     type: str | None = None
+    chat_meta_data: dict[str, Any] | None = None
     created_by: UUID
 
 
@@ -53,6 +57,7 @@ class FormRead(SQLModel):
     type: str | None = None
     created_by: UUID
     meta_data: dict[str, Any] | None = None
+    chat_meta_data: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime | None
     sections: list["FormSectionsRead"] = []
@@ -64,6 +69,7 @@ class FormUpdate(SQLModel):
     type: str | None = None
     created_by: UUID | None = None
     meta_data: dict[str, Any] | None = None
+    chat_meta_data: dict[str, Any] | None = None
     active_at: datetime | None = None
 
 
@@ -123,6 +129,7 @@ class FormQuestions(BaseModel, table=True):
         foreign_key="formsections.id"
     )  # Reference to the parent section
     label: str  # The question text shown to the user
+    prompt: str | None = None  # The conversational prompt for the question
     field_type: FormFieldTypes  # Type of the question (text, number, etc.)
     required: bool = False  # Whether the field is required
     order: int  # Position of the question within the section
@@ -141,6 +148,7 @@ class FormQuestions(BaseModel, table=True):
 class FormQuestionsCreate(SQLModel):
     section_id: UUID
     label: str
+    prompt: str | None = None
     field_type: FormFieldTypes
     required: bool
     order: int
@@ -151,6 +159,7 @@ class FormQuestionsRead(SQLModel):
     id: UUID
     section_id: UUID
     label: str
+    prompt: str | None = None
     field_type: FormFieldTypes
     required: bool
     options: list[str] | None = None
@@ -162,6 +171,7 @@ class FormQuestionsRead(SQLModel):
 class FormQuestionsUpdate(SQLModel):
     section_id: UUID
     label: str | None = None
+    prompt: str | None = None
     field_type: FormFieldTypes | None = None
     order: int | None = None
     options: list[str] | None = None

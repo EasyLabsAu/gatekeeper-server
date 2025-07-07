@@ -41,7 +41,7 @@ from src.repositories.forms import (
     FormSectionResponseRepository,
 )
 
-form_router: APIRouter = APIRouter(prefix="/api/v1/forms", tags=["forms"])
+form_router: APIRouter = APIRouter(prefix="/forms", tags=["forms"])
 form_repository: FormRepository = FormRepository()
 section_repository: FormSectionRepository = FormSectionRepository()
 question_repository: FormQuestionRepository = FormQuestionRepository()

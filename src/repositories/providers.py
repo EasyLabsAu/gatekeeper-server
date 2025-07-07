@@ -268,15 +268,12 @@ class ProviderRepository(BaseRepository):
     ) -> APIResponse | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            print(payload)
             stmt = select(Providers).where(
                 Providers.email == payload.email,
                 Providers.is_deleted == False,  # noqa: E712
             )
             result = await db.execute(stmt)
             provider_or_none = result.scalar_one_or_none()
-
-            print(provider_or_none)
 
             if not provider_or_none:
                 raise APIError(404, "Provider not found")
