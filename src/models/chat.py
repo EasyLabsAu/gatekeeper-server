@@ -11,7 +11,7 @@ class ChatType(str, Enum):
 class Chat(BaseModel):
     type: ChatType
     client_id: str
-    sender: str
-    message: str
+    sender: str | None
+    message: str | None
     form: str | None = None
-    timestamp: str
+    timestamp: str | None

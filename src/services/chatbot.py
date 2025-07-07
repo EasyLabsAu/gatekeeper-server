@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from src.helpers.model import utc_now
 from uuid import UUID
 
 import aiofiles
@@ -21,6 +22,7 @@ from src.helpers.cache import Cache, PickleSerializer
 from src.helpers.logger import Logger
 from src.models.forms import (
     FormFieldTypes,
+    FormRead,
 )
 
 logger = Logger(__name__)
@@ -63,7 +65,6 @@ def extract_name(text: str, nlp_model: Language) -> str:
     for ent in doc.ents:
         if ent.label_ == "PERSON":
             return ent.text
-    # Fallback for simple names
     if len(text.split()) >= 2:
         return text
     return ""
@@ -226,7 +227,7 @@ class Chatbot:
         try:
             self.annoy_index = AnnoyIndex(self.embedding_dim, "angular")
             self.annoy_index.load(str(ANNOY_INDEX_FILE))
-        except Exception as e:
+        except OSError as e:
             logger.error("Failed to load Annoy index: %s", e)
             return
 
@@ -234,18 +235,18 @@ class Chatbot:
             async with aiofiles.open(EMBEDDINGS_FILE, mode="rb") as f:
                 data = await f.read()
                 self.intent_mapping = pickle.loads(data)
-        except Exception as e:
+        except (pickle.UnpicklingError, OSError) as e:
             logger.error("Failed to load intent embeddings: %s", e)
-            self.annoy_index = None  # Invalidate if related data fails to load
+            self.annoy_index = None
             return
 
         try:
             async with aiofiles.open(INTENTS_FILE, encoding="utf-8") as f:
                 content = await f.read()
                 self.intents_data = json.loads(content)
-        except Exception as e:
+        except (ValueError, TypeError, KeyError) as e:
             logger.error("Failed to load intents data: %s", e)
-            self.annoy_index = None  # Invalidate if related data fails to load
+            self.annoy_index = None
             self.intent_mapping = {}
             return
 
@@ -344,7 +345,6 @@ class Chatbot:
         index = flow.get("current_question_index", 0)
         if 0 <= index < len(questions):
             q_data = questions[index]
-            # Ensure question_id and section_id are UUIDs
             q_data["question_id"] = (
                 UUID(q_data["question_id"])
                 if isinstance(q_data["question_id"], str)
@@ -358,7 +358,7 @@ class Chatbot:
             return Question(**q_data)
         return None
 
-    async def _start_form_conversation(self, form: dict) -> str | None:
+    async def _start_form_conversation(self, form: dict | None) -> str | None:
         if not form:
             return "I couldn't find that form."
 
@@ -409,8 +409,8 @@ class Chatbot:
         if not current_question:
             self._deactivate_flow()
             return "It seems there was an issue with the form. Let's start over."
-        validation_error = self._validate_answer(user_input, current_question)
 
+        validation_error = self._validate_answer(user_input, current_question)
         if validation_error:
             self.context["conversation_flow"]["current_question_invalid_attempts"] += 1
             if (
@@ -433,18 +433,18 @@ class Chatbot:
         else:
             self.context["conversation_flow"]["current_question_invalid_attempts"] = 0
             await self._save_form_response(user_input, current_question)
-
             flow = self.context["conversation_flow"]
-            flow["current_question_index"] += 1
-            self.context["conversation_flow"]["current_question_invalid_attempts"] = 0
 
-            if flow["current_question_index"] >= len(flow["questions"]):
+            if flow["current_question_index"] >= len(flow["questions"]) - 1:
+                completion_message = flow["completion_message"]
                 self._deactivate_flow()
+                self.context.pop("current_form_id", None)
                 await self._finalize_form_submission()
-                return flow["completion_message"]
-
-            next_question = self._get_current_question()
-            return next_question.text if next_question else "Something went wrong."
+                return completion_message
+            else:
+                flow["current_question_index"] += 1
+                next_question = self._get_current_question()
+                return next_question.text if next_question else "Something went wrong."
 
     async def _save_form_response(self, answer: str, question: Question):
         form_responses_id_str = self.context.get("form_responses_id")
@@ -475,10 +475,21 @@ class Chatbot:
 
         section_response_id = self.context["section_responses"][section_id_str]
 
+        if question.field_type == FormFieldTypes.DATETIME.value:
+            try:
+                # Try YYYY-MM-DD format first
+                parsed_answer = datetime.strptime(answer, "%Y-%m-%d")
+            except ValueError:
+                # Fallback to ISO format if YYYY-MM-DD fails
+                parsed_answer = datetime.fromisoformat(answer)
+            processed_answer = parsed_answer.isoformat()
+        else:
+            processed_answer = answer
+
         question_response = {
             "section_response_id": section_response_id,
             "question_id": str(question.question_id),
-            "answer": answer,
+            "answer": processed_answer,
             "submitted_at": datetime.now().isoformat(),
         }
         logger.info("--- New Question Response ---")
@@ -525,37 +536,70 @@ class Chatbot:
                     return f"One or more of your choices are not valid. Please choose from: {', '.join(question.options or [])}"
         elif field_type == FormFieldTypes.DATETIME.value:
             try:
-                datetime.fromisoformat(answer)
+                datetime.strptime(answer, "%Y-%m-%d")
             except ValueError:
-                return "Please enter a valid date and time in ISO format (YYYY-MM-DDTHH:MM:SS)."
+                try:
+                    datetime.fromisoformat(answer)
+                except ValueError:
+                    return "Please enter a valid date in YYYY-MM-DD format."
         return None
 
-    async def get_response(self, user_input: str, form: dict | None = None) -> str:
+    async def get_response(
+        self, user_input: str, form: FormRead | None = None
+    ) -> dict[str, str | None]:
         await self.load_context()
         await self._load_intent_assets()
-        response = ""
+        logger.info("User input: %s", user_input)
+        response = "Hey there! How can I help you?"
+        sender = "bot"
+        timestamp = utc_now().isoformat()
+
         try:
             if not isinstance(user_input, str) or not user_input.strip():
-                return random.choice(self._get_responses("invalid"))
+                return {
+                    "sender": sender,
+                    "timestamp": timestamp,
+                    "form": self.context.get("current_form_id"),
+                    "message": random.choice(self._get_responses("invalid")),
+                }
 
             if any(keyword in user_input.lower() for keyword in EXIT_KEYWORDS):
                 if self._is_flow_active():
                     self._deactivate_flow()
+                    self.context.pop("current_form_id", None)
                     self.last_intent = "invalid"
-                    return "Okay, cancelling that. What would you like to do?"
+                    response = "Okay, cancelling that. What would you like to do?"
+                    return {
+                        "sender": sender,
+                        "timestamp": timestamp,
+                        "form": self.context.get("current_form_id"),
+                        "message": response,
+                    }
 
-            if self._is_flow_active():
-                if self.context.get("current_form_id"):
-                    response = await self._process_form_answer(user_input)
-                else:
-                    self._deactivate_flow()
-                    response = "Flow interrupted. What would you like to do?"
-                return response
+            if self._is_flow_active() and self.context.get("current_form_id"):
+                response = await self._process_form_answer(user_input)
+                return {
+                    "sender": sender,
+                    "timestamp": timestamp,
+                    "form": self.context.get("current_form_id"),
+                    "message": response,
+                }
+
+            if self._is_flow_active() and not self.context.get("current_form_id"):
+                self._deactivate_flow()
 
             if form:
-                response = await self._start_form_conversation(form)
+                data = form.model_dump() if isinstance(form, FormRead) else form
+                response = await self._start_form_conversation(data)
                 self.last_intent = "form_started"
-                return response or "Something went wrong starting the form."
+                if not response:
+                    response = "Something went wrong starting the form."
+                return {
+                    "sender": sender,
+                    "timestamp": timestamp,
+                    "form": self.context.get("current_form_id"),
+                    "message": response,
+                }
 
             intent, _, _ = self._recognize_intent(user_input.lower())
             logger.info("Final intent recognized: %s", intent)
@@ -578,7 +622,12 @@ class Chatbot:
             else:
                 response = random.choice(self._get_responses("invalid"))
 
-            return response
+            return {
+                "sender": sender,
+                "timestamp": timestamp,
+                "form": self.context.get("current_form_id"),
+                "message": response,
+            }
 
         finally:
             await self.save_context()

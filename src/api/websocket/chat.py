@@ -179,7 +179,8 @@ def chat_events(sio: AsyncServer):
                     chatbot = Chatbot(session_id=str(session_id))
                     form_id = await get_form_id(client_id)
                     form_repository = FormRepository()
-                    bot_response = await chatbot.get_response(user_message)
+                    bot_response = None
+
                     if form_id:
                         form = await form_repository.get(UUID(form_id))
                         if form and form.data:
@@ -194,27 +195,46 @@ def chat_events(sio: AsyncServer):
                                         sender="bot",
                                         message="Great! I will require some details from you.",
                                         timestamp=utc_now().isoformat(),
-                                        form=None,
+                                        form=form_id,
                                     ).model_dump(),
                                     room=sid,
                                 )
                             bot_response = await chatbot.get_response(
-                                user_message, form.data.model_dump()
+                                user_message, form.data
                             )
+                            if bot_response.get("form") is None:
+                                await delete_forms(client_id)
+                                await delete_form_onboarded(client_id)
                         else:
-                            bot_response = "Form not found. Please try a different one."
+                            bot_response = {
+                                "sender": "bot",
+                                "message": "Form not found. Please try a different one.",
+                                "timestamp": utc_now().isoformat(),
+                                "form": None,
+                            }
                             await delete_forms(client_id)
                             await delete_form_onboarded(client_id)
+
+                    if not bot_response:
+                        bot_response = await chatbot.get_response(user_message)
 
                     bot_message = Chat(
                         type=ChatType.ENGAGEMENT,
                         client_id=client_id,
-                        sender="bot",
-                        message=bot_response,
-                        timestamp=utc_now().isoformat(),
-                        form=None,
+                        sender=bot_response.get("sender") if bot_response else "bot",
+                        message=bot_response.get("message")
+                        if bot_response
+                        else "Error",
+                        timestamp=bot_response.get("timestamp")
+                        if bot_response
+                        else None,
+                        form=bot_response.get("form"),
                     )
-                    await append_transcription(client_id, bot_message.model_dump())
+
+                    await append_transcription(
+                        client_id,
+                        bot_message.model_dump(),
+                    )
 
                     current_transcriptions = await get_transcriptions(client_id)
                     if session_id:
