@@ -100,6 +100,45 @@ async def delete_form_onboarded(client_id: str):
     await cache.delete(f"form_onboarded:{client_id}")
 
 
+async def push_to_response_queue(client_id: str, message: dict):
+    await cache.list_append(f"response_queue:{client_id}", message)
+
+
+async def pop_from_response_queue(client_id: str) -> dict | None:
+    return await cache.list_pop(f"response_queue:{client_id}")
+
+
+async def delete_response_queue(client_id: str):
+    await cache.delete(f"response_queue:{client_id}")
+
+
+async def is_queue_processing(client_id: str) -> bool:
+    return await cache.get(f"response_queue_processing:{client_id}") == "true"
+
+
+async def set_queue_processing(client_id: str, status: bool):
+    if status:
+        await cache.set(f"response_queue_processing:{client_id}", "true", ttl=60)
+    else:
+        await cache.delete(f"response_queue_processing:{client_id}")
+
+
+async def _process_response_queue(client_id: str, sio: AsyncServer, sid: str):
+    if await is_queue_processing(client_id):
+        return
+
+    await set_queue_processing(client_id, True)
+    try:
+        while True:
+            response = await pop_from_response_queue(client_id)
+            if response:
+                await sio.emit("chat", response, room=sid)
+            else:
+                break
+    finally:
+        await set_queue_processing(client_id, False)
+
+
 async def delete_client(client_id: str):
     client_list = await cache.list_get("clients") or []
 
@@ -141,7 +180,7 @@ async def _get_or_create_session(client_id: str, socket_session: dict) -> str | 
 
 
 async def _get_form_response(
-    client_id: str, user_message: str, chatbot: Chatbot, sio: AsyncServer, sid: str
+    client_id: str, user_message: str, chatbot: Chatbot
 ) -> dict | None:
     """Get response from chatbot, handling form-specific logic."""
     form_id = await get_form_id(client_id)
@@ -156,8 +195,8 @@ async def _get_form_response(
         form_onboarded = await get_form_onboarded(client_id)
         if not form_onboarded:
             await set_form_onboarded(client_id, True)
-            await sio.emit(
-                "chat",
+            await push_to_response_queue(
+                client_id,
                 Chat(
                     type=ChatType.ONBOARDING,
                     client_id=client_id,
@@ -166,7 +205,6 @@ async def _get_form_response(
                     timestamp=utc_now().isoformat(),
                     form=form_id,
                 ).model_dump(),
-                room=sid,
             )
         bot_response = await chatbot.get_response(user_message, form.data)
         if bot_response.get("form") is None:
@@ -319,8 +357,8 @@ def chat_events(sio: AsyncServer):
                         logger.error(
                             "Failed to get or create session for client %s", client_id
                         )
-                        await sio.emit(
-                            "chat",
+                        await push_to_response_queue(
+                            client_id,
                             Chat(
                                 type=ChatType.ENGAGEMENT,
                                 client_id=client_id,
@@ -328,13 +366,13 @@ def chat_events(sio: AsyncServer):
                                 message="Sorry, I'm having trouble with our session. Please try again later.",
                                 timestamp=utc_now().isoformat(),
                             ).model_dump(),
-                            room=sid,
                         )
+                        await _process_response_queue(client_id, sio, sid)
                         return
 
                     chatbot = Chatbot(session_id=session_id)
                     bot_response = await _get_form_response(
-                        client_id, user_message, chatbot, sio, sid
+                        client_id, user_message, chatbot
                     )
 
                     if not bot_response:
@@ -376,11 +414,8 @@ def chat_events(sio: AsyncServer):
                         client_id,
                         current_transcriptions,
                     )
-                    await sio.emit(
-                        "chat",
-                        bot_message.model_dump(),
-                        room=sid,
-                    )
+                    await push_to_response_queue(client_id, bot_message.model_dump())
+                    await _process_response_queue(client_id, sio, sid)
                 else:
                     logger.warning(
                         "Received empty 'message' from %s. Data: %s", client_id, data
