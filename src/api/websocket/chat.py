@@ -181,15 +181,16 @@ async def _get_or_create_session(client_id: str, socket_session: dict) -> str | 
 
 async def _get_form_response(
     client_id: str, user_message: str, chatbot: Chatbot
-) -> dict | None:
+) -> dict:
     """Get response from chatbot, handling form-specific logic."""
     form_id = await get_form_id(client_id)
-    if not form_id:
-        return None
-
     form_repository = FormRepository()
     form = await form_repository.get(UUID(form_id))
     bot_response = None
+    form_complete = False
+
+    if not form_id:
+        return {"bot_response": None, "form_complete": form_complete}
 
     if form and form.data:
         form_onboarded = await get_form_onboarded(client_id)
@@ -213,6 +214,7 @@ async def _get_form_response(
                 form_responses = meta_data.get("form_responses")
                 if isinstance(form_responses, list) and form_responses:
                     await _create_form_responses(form_responses)
+                    form_complete = True
             await delete_forms(client_id)
             await delete_form_onboarded(client_id)
     else:
@@ -224,7 +226,7 @@ async def _get_form_response(
         await delete_forms(client_id)
         await delete_form_onboarded(client_id)
 
-    return bot_response
+    return {"bot_response": bot_response, "form_complete": form_complete}
 
 
 async def _create_form_responses(responses: list[dict]):
@@ -371,10 +373,11 @@ def chat_events(sio: AsyncServer):
                         return
 
                     chatbot = Chatbot(session_id=session_id)
-                    bot_response = await _get_form_response(
+                    form_response = await _get_form_response(
                         client_id, user_message, chatbot
                     )
 
+                    bot_response = form_response.get("bot_response")
                     if not bot_response:
                         bot_response = await chatbot.get_response(user_message)
 
@@ -415,6 +418,18 @@ def chat_events(sio: AsyncServer):
                         current_transcriptions,
                     )
                     await push_to_response_queue(client_id, bot_message.model_dump())
+                    if form_response.get("form_complete"):
+                        await push_to_response_queue(
+                            client_id,
+                            Chat(
+                                type=ChatType.OFFBOARDING,
+                                client_id=client_id,
+                                sender="bot",
+                                message="Is there anything else I can help you with?",
+                                timestamp=utc_now().isoformat(),
+                                form=None,
+                            ).model_dump(),
+                        )
                     await _process_response_queue(client_id, sio, sid)
                 else:
                     logger.warning(
