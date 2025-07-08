@@ -368,7 +368,7 @@ def chat_events(sio: AsyncServer):
                         await _process_response_queue(client_id, sio, sid)
                         return
 
-                    if user_message == "bye":
+                    if user_message == "manual_command_end_session":
                         current_transcriptions = await get_transcriptions(client_id)
                         if session_id:
                             await events.emit(
@@ -379,46 +379,31 @@ def chat_events(sio: AsyncServer):
                                 ),
                             )
                         logger.info(
-                            "Current transcription for %s: %s",
+                            "Ending session for %s. Final transcription: %s",
                             client_id,
                             current_transcriptions,
                         )
                         await delete_transcriptions(client_id)
                         await delete_sessions(client_id)
+                        await delete_forms(client_id)
+                        await delete_form_onboarded(client_id)
+                        await delete_response_queue(client_id)
                         await delete_client(client_id)
 
-                    else:
-                        chatbot = Chatbot(session_id=session_id)
-                        form_response = await _get_form_response(
-                            client_id, user_message, chatbot
+                        await sio.emit(
+                            "chat",
+                            Chat(
+                                type=ChatType.OFFBOARDING,
+                                client_id=client_id,
+                                sender="bot",
+                                message="It was nice talking to you. Goodbye!",
+                                timestamp=utc_now().isoformat(),
+                            ).model_dump(),
+                            room=sid,
                         )
+                        return
 
-                        bot_response = form_response.get("bot_response")
-                        if not bot_response:
-                            bot_response = await chatbot.get_response(user_message)
-
-                        bot_message = Chat(
-                            type=ChatType.ENGAGEMENT,
-                            client_id=client_id,
-                            sender=str(bot_response.get("sender"))
-                            if bot_response.get("sender")
-                            else "bot",
-                            message=str(bot_response.get("message"))
-                            if bot_response.get("message")
-                            else "Error",
-                            timestamp=str(bot_response.get("timestamp"))
-                            if bot_response.get("timestamp")
-                            else utc_now().isoformat(),
-                            form=str(bot_response.get("form"))
-                            if bot_response.get("form")
-                            else None,
-                        )
-
-                        await append_transcription(
-                            client_id,
-                            bot_message.model_dump(),
-                        )
-
+                    elif user_message == "manual_command_restart_session":
                         current_transcriptions = await get_transcriptions(client_id)
                         if session_id:
                             await events.emit(
@@ -429,26 +414,88 @@ def chat_events(sio: AsyncServer):
                                 ),
                             )
                         logger.info(
-                            "Current transcription for %s: %s",
+                            "Restarting session for %s. Final transcription: %s",
                             client_id,
                             current_transcriptions,
                         )
+                        await delete_transcriptions(client_id)
+                        await delete_sessions(client_id)
+                        await delete_forms(client_id)
+                        await delete_form_onboarded(client_id)
+                        await delete_response_queue(client_id)
+
                         await push_to_response_queue(
-                            client_id, bot_message.model_dump()
+                            client_id,
+                            Chat(
+                                type=ChatType.ONBOARDING,
+                                client_id=client_id,
+                                sender="bot",
+                                message="Hey there! How can I help you?",
+                                timestamp=utc_now().isoformat(),
+                            ).model_dump(),
                         )
-                        if form_response.get("form_complete"):
-                            await push_to_response_queue(
-                                client_id,
-                                Chat(
-                                    type=ChatType.OFFBOARDING,
-                                    client_id=client_id,
-                                    sender="bot",
-                                    message="Is there anything else I can help you with?",
-                                    timestamp=utc_now().isoformat(),
-                                    form=None,
-                                ).model_dump(),
-                            )
                         await _process_response_queue(client_id, sio, sid)
+                        return
+
+                    chatbot = Chatbot(session_id=session_id)
+                    form_response = await _get_form_response(
+                        client_id, user_message, chatbot
+                    )
+
+                    bot_response = form_response.get("bot_response")
+                    if not bot_response:
+                        bot_response = await chatbot.get_response(user_message)
+
+                    bot_message = Chat(
+                        type=ChatType.ENGAGEMENT,
+                        client_id=client_id,
+                        sender=str(bot_response.get("sender"))
+                        if bot_response.get("sender")
+                        else "bot",
+                        message=str(bot_response.get("message"))
+                        if bot_response.get("message")
+                        else "Error",
+                        timestamp=str(bot_response.get("timestamp"))
+                        if bot_response.get("timestamp")
+                        else utc_now().isoformat(),
+                        form=str(bot_response.get("form"))
+                        if bot_response.get("form")
+                        else None,
+                    )
+
+                    await append_transcription(
+                        client_id,
+                        bot_message.model_dump(),
+                    )
+
+                    current_transcriptions = await get_transcriptions(client_id)
+                    if session_id:
+                        await events.emit(
+                            CHAT_UPDATED_EVENT,
+                            session_id,
+                            SessionUpdate(
+                                transcription=current_transcriptions,
+                            ),
+                        )
+                    logger.info(
+                        "Current transcription for %s: %s",
+                        client_id,
+                        current_transcriptions,
+                    )
+                    await push_to_response_queue(client_id, bot_message.model_dump())
+                    if form_response.get("form_complete"):
+                        await push_to_response_queue(
+                            client_id,
+                            Chat(
+                                type=ChatType.OFFBOARDING,
+                                client_id=client_id,
+                                sender="bot",
+                                message="Is there anything else I can help you with?",
+                                timestamp=utc_now().isoformat(),
+                                form=None,
+                            ).model_dump(),
+                        )
+                    await _process_response_queue(client_id, sio, sid)
                 else:
                     logger.warning(
                         "Received empty 'message' from %s. Data: %s", client_id, data
