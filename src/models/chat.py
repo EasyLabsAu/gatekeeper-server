@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class ChatType(str, Enum):
     ONBOARDING = "onboarding"
+    OFFBOARDING = "offboarding"
     ENGAGEMENT = "engagement"
 
 

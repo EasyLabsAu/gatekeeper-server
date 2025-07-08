@@ -389,7 +389,7 @@ class Chatbot:
             for q in questions_data
         ]
 
-        completion_message = f"Thank you for completing the '{form.get('name')}' form!"
+        completion_message = "Thank you for giving us the details!"
 
         self.context["conversation_flow"] = {
             "questions": conversation_questions,

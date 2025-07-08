@@ -182,7 +182,6 @@ async def _get_form_response(
             "sender": "bot",
             "message": "Form not found. Please try a different one.",
             "timestamp": utc_now().isoformat(),
-            "form": None,
         }
         await delete_forms(client_id)
         await delete_form_onboarded(client_id)
@@ -301,7 +300,6 @@ def chat_events(sio: AsyncServer):
                                 sender="bot",
                                 message="Hey there! How can I help you?",
                                 timestamp=utc_now().isoformat(),
-                                form=None,
                             ).model_dump(),
                         )
                     await append_transcription(
@@ -312,7 +310,6 @@ def chat_events(sio: AsyncServer):
                             sender="user",
                             message=user_message,
                             timestamp=utc_now().isoformat(),
-                            form=None,
                         ).model_dump(),
                     )
 
@@ -347,15 +344,17 @@ def chat_events(sio: AsyncServer):
                         type=ChatType.ENGAGEMENT,
                         client_id=client_id,
                         sender=str(bot_response.get("sender"))
-                        if bot_response
+                        if bot_response.get("sender")
                         else "bot",
                         message=str(bot_response.get("message"))
-                        if bot_response
+                        if bot_response.get("message")
                         else "Error",
                         timestamp=str(bot_response.get("timestamp"))
-                        if bot_response
+                        if bot_response.get("timestamp")
                         else utc_now().isoformat(),
-                        form=str(bot_response.get("form")) if bot_response else None,
+                        form=str(bot_response.get("form"))
+                        if bot_response.get("form")
+                        else None,
                     )
 
                     await append_transcription(
