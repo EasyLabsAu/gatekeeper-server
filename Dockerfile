@@ -28,7 +28,6 @@ COPY pyproject.toml .
 # Install dependencies from pyproject.toml (including dev and test)
 RUN pip install toml
 RUN python -c "import toml, subprocess, sys; data = toml.load('pyproject.toml'); deps = data['project']['dependencies'] + data['dependency-groups']['dev'] + data['dependency-groups']['test']; [subprocess.check_call([sys.executable, '-m', 'pip', 'install', d]) for d in deps]"
-RUN python -m spacy download en_core_web_lg
 
 COPY . .
 
@@ -36,7 +35,7 @@ EXPOSE 8080
 
 ENV PYTHONPATH=/app
 
-CMD ["sh", "-c", "alembic upgrade head && python src/scripts/seed.py && python src/scripts/precompute.py && uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080"]
+CMD ["sh", "-c", "alembic upgrade head && python src/scripts/seed.py && uvicorn src.server:app --reload --lifespan on --host 0.0.0.0 --port 8080"]
 
 # Stage 2: Builder Environment
 FROM python:3.10 AS builder
@@ -68,7 +67,6 @@ COPY pyproject.toml .
 # Install production dependencies from pyproject.toml
 RUN pip install toml
 RUN python -c "import toml, subprocess, sys; data = toml.load('pyproject.toml'); deps = data['project']['dependencies']; [subprocess.check_call([sys.executable, '-m', 'pip', 'install', d]) for d in deps]"
-RUN python -m spacy download en_core_web_lg
 COPY src /app/src
 
 # Stage 3: Production Environment
@@ -87,4 +85,4 @@ COPY --from=builder /app/src /app/src
 EXPOSE 8080
 
 ENV PYTHONPATH=/app
-CMD ["sh", "-c", "alembic upgrade head && python src/scripts/seed.py && python src/scripts/precompute.py && uvicorn src.server:app --host 0.0.0.0 --port 8080"]
+CMD ["sh", "-c", "alembic upgrade head && python src/scripts/seed.py && uvicorn src.server:app --host 0.0.0.0 --port 8080"]

@@ -7,6 +7,11 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Gatekeeper Server"
     VERSION: str = "0.1.0"
 
+    # LLM Settings
+    LLM_KEY: str = ""
+    LLM_MODEL: str = ""
+    LLM_PROVIDER: str = ""
+
     # Environment settings
     BASE_URL: str = ""
     ENV: str = "development"
