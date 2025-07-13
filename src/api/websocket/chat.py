@@ -204,10 +204,6 @@ def chat_events(sio: AsyncServer):
                 parsed_data = json.loads(data) if isinstance(data, str) else data
                 sender = parsed_data.get("sender")
                 user_message = parsed_data.get("message")
-                form_id_from_user = parsed_data.get("form")
-
-                if form_id_from_user:
-                    await set_form_id(client_id, form_id_from_user)
 
                 if user_message and sender == "user":
                     transcriptions = await get_transcriptions(client_id)
@@ -253,73 +249,120 @@ def chat_events(sio: AsyncServer):
                         return
 
                     chatbot = Chatbot(session_id=session_id)
-                    form_id = await get_form_id(client_id)
-                    form_context = await chatbot.cache.get(
-                        chatbot.FORM_CONTEXT_CACHE_KEY
-                    )
+                    full_bot_response = ""
+                    form_id_for_completion = None
 
-                    bot_response: str
-                    if form_id and not form_context:
-                        form_repo = FormRepository()
-                        form_data = await form_repo.get(UUID(form_id))
-                        if form_data and form_data.data:
-                            questions = []
-                            for section in form_data.data.sections:
-                                for q in section.questions:
-                                    questions.append(
-                                        {
-                                            "id": str(q.id),
-                                            "prompt": q.prompt,
-                                            "label": q.label,
-                                        }
-                                    )
-                            bot_response = await chatbot.add_form_context(
-                                form_id, questions
-                            )
-                            await push_to_response_queue(
-                                client_id,
+                    async for chunk in chatbot.chat(user_message, stream=True):
+                        if isinstance(chunk, str):
+                            full_bot_response += chunk
+                            await sio.emit(
+                                "chat",
                                 Chat(
-                                    type=ChatType.ONBOARDING,
+                                    type=ChatType.ENGAGEMENT,
                                     client_id=client_id,
                                     sender="bot",
-                                    message="Great! I will require some details from you.",
+                                    message=chunk,
                                     timestamp=utc_now().isoformat(),
-                                    form=form_id,
                                 ).model_dump(),
+                                to=sid,
                             )
-                        else:
-                            bot_response = "Sorry, I couldn't find that form."
-                            await delete_forms(client_id)
-                    else:
-                        bot_response = await chatbot.chat_response(user_message)
-
-                    bot_message = Chat(
-                        type=ChatType.ENGAGEMENT,
-                        client_id=client_id,
-                        sender="bot",
-                        message=bot_response,
-                        timestamp=utc_now().isoformat(),
-                    )
-                    await append_transcription(client_id, bot_message.model_dump())
-                    await push_to_response_queue(client_id, bot_message.model_dump())
-
-                    if bot_response == "Thank you for completing the form.":
-                        if form_id:
-                            form_responses = await chatbot.cache.hash_get_all(
-                                f"{chatbot.FORM_RESPONSES_CACHE_KEY_PREFIX}:{form_id}"
-                            )
-                            if form_responses:
-                                await _create_form_responses(
-                                    form_id, session_id, form_responses
+                        elif isinstance(chunk, dict):
+                            if chunk["type"] == "form_start":
+                                form_id_for_completion = chunk["form_id"]
+                                await set_form_id(client_id, form_id_for_completion)
+                                form_repo = FormRepository()
+                                form_data = await form_repo.get(
+                                    UUID(form_id_for_completion)
                                 )
-                            await delete_forms(client_id)
-                        await push_to_response_queue(
+                                if form_data and form_data.data:
+                                    questions = []
+                                    for section in form_data.data.sections:
+                                        for q in section.questions:
+                                            questions.append(
+                                                {
+                                                    "id": str(q.id),
+                                                    "prompt": q.prompt,
+                                                    "label": q.label,
+                                                }
+                                            )
+                                    first_question_text = (
+                                        await chatbot.add_form_context(
+                                            form_id_for_completion, questions
+                                        )
+                                    )
+                                    await push_to_response_queue(
+                                        client_id,
+                                        Chat(
+                                            type=ChatType.ONBOARDING,
+                                            client_id=client_id,
+                                            sender="bot",
+                                            message="Great! I will require some details from you.",
+                                            timestamp=utc_now().isoformat(),
+                                            form=form_id_for_completion,
+                                        ).model_dump(),
+                                    )
+                                    await sio.emit(
+                                        "chat",
+                                        Chat(
+                                            type=ChatType.ENGAGEMENT,
+                                            client_id=client_id,
+                                            sender="bot",
+                                            message=first_question_text,
+                                            timestamp=utc_now().isoformat(),
+                                        ).model_dump(),
+                                        to=sid,
+                                    )
+                                    full_bot_response = first_question_text
+                                else:
+                                    error_message = "Sorry, I couldn't find that form."
+                                    await sio.emit(
+                                        "chat",
+                                        Chat(
+                                            type=ChatType.ENGAGEMENT,
+                                            client_id=client_id,
+                                            sender="bot",
+                                            message=error_message,
+                                            timestamp=utc_now().isoformat(),
+                                        ).model_dump(),
+                                        to=sid,
+                                    )
+                                    await delete_forms(client_id)
+                                    full_bot_response = error_message
+
+                            elif (
+                                chunk["content"] == "Thank you for completing the form."
+                            ):
+                                form_id_for_completion = chunk["form_id"]
+                                if form_id_for_completion:
+                                    form_responses = await chatbot.cache.hash_get_all(
+                                        f"{chatbot.FORM_RESPONSES_CACHE_KEY_PREFIX}:{form_id_for_completion}"
+                                    )
+                                    if form_responses:
+                                        await _create_form_responses(
+                                            form_id_for_completion,
+                                            session_id,
+                                            form_responses,
+                                        )
+                                    await delete_forms(client_id)
+                                await push_to_response_queue(
+                                    client_id,
+                                    Chat(
+                                        type=ChatType.OFFBOARDING,
+                                        client_id=client_id,
+                                        sender="bot",
+                                        message="Is there anything else I can help you with?",
+                                        timestamp=utc_now().isoformat(),
+                                    ).model_dump(),
+                                )
+                                full_bot_response = chunk["content"]
+                    if full_bot_response:
+                        await append_transcription(
                             client_id,
                             Chat(
-                                type=ChatType.OFFBOARDING,
+                                type=ChatType.ENGAGEMENT,
                                 client_id=client_id,
                                 sender="bot",
-                                message="Is there anything else I can help you with?",
+                                message=full_bot_response,
                                 timestamp=utc_now().isoformat(),
                             ).model_dump(),
                         )

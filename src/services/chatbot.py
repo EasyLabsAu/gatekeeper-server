@@ -1,6 +1,7 @@
+import json
 import os
 from collections.abc import AsyncGenerator, Sequence
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict, overload
 
 from aioredis import RedisError
 from langchain.chat_models import init_chat_model
@@ -17,6 +18,7 @@ from langchain_core.messages import (
 from src.core.config import settings
 from src.helpers.cache import Cache
 from src.helpers.logger import Logger
+from src.repositories.forms import FormRepository
 
 logger = Logger(__name__)
 
@@ -25,6 +27,12 @@ class FormQuestion(TypedDict):
     id: str
     prompt: str | None
     label: str
+
+
+class ChatbotResponse(TypedDict):
+    type: str
+    content: str
+    form_id: str | None
 
 
 class Chatbot:
@@ -121,59 +129,6 @@ class Chatbot:
                 logger.error("Error completing form: %s", e)
                 return "Thank you for completing the form."
 
-    async def chat_response(self, user_input: str) -> str:
-        try:
-            form_context = await self.cache.get(self.FORM_CONTEXT_CACHE_KEY)
-            if form_context:
-                return await self._handle_form_response(user_input, form_context)
-        except RedisError as e:
-            logger.error("Error retrieving form context: %s", e)
-
-        conversation_history = await self._get_conversation_history()
-        conversation_history.append(HumanMessage(content=user_input))
-        try:
-            response = await self.model.ainvoke(conversation_history)
-            conversation_history.append(AIMessage(content=response.content))
-            await self._save_conversation_history(conversation_history)
-
-            if isinstance(response.content, str):
-                return response.content
-            elif isinstance(response.content, list):
-                return " ".join(str(item) for item in response.content)
-            else:
-                return str(response.content)
-        except LangChainException as e:
-            logger.error("Error getting chat response: %s", e)
-            return "Sorry, I'm having trouble responding right now. Please try again later."
-
-    async def chat_stream(self, user_input: str) -> AsyncGenerator[str, None]:
-        try:
-            form_context = await self.cache.get(self.FORM_CONTEXT_CACHE_KEY)
-            if form_context:
-                response = await self._handle_form_response(user_input, form_context)
-                yield response
-                return
-        except RedisError as e:
-            logger.error("Error retrieving form context: %s", e)
-
-        conversation_history = await self._get_conversation_history()
-        conversation_history.append(HumanMessage(content=user_input))
-
-        try:
-            stream_response = self.model.astream(conversation_history)
-
-            full_response = ""
-            async for chunk in stream_response:
-                token = self._extract_text(chunk.content)
-                full_response += token
-                yield token
-
-            conversation_history.append(AIMessage(content=full_response))
-            await self._save_conversation_history(conversation_history)
-        except LangChainException as e:
-            logger.error("Error getting chat stream: %s", e)
-            yield "Sorry, I'm having trouble responding right now. Please try again later."
-
     def _extract_text(self, content: str | list | dict) -> str:
         if isinstance(content, str):
             return content
@@ -199,3 +154,119 @@ class Chatbot:
     async def set_system_prompt(self, system_prompt: str):
         conversation_history = [SystemMessage(content=system_prompt)]
         await self._save_conversation_history(conversation_history)
+
+    @overload
+    def chat(
+        self, user_input: str, stream: Literal[False] = False
+    ) -> AsyncGenerator[ChatbotResponse, None]: ...
+
+    @overload
+    def chat(
+        self, user_input: str, stream: Literal[True]
+    ) -> AsyncGenerator[str, None]: ...
+
+    def chat(self, user_input: str, stream: bool = False) -> AsyncGenerator[Any, None]:
+        if stream:
+            return self._stream(user_input)
+        else:
+            return self._batch(user_input)
+
+    async def _stream(self, user_input: str) -> AsyncGenerator[str, None]:
+        try:
+            form_context = await self.cache.get(self.FORM_CONTEXT_CACHE_KEY)
+            if form_context:
+                response_content = await self._handle_form_response(
+                    user_input, form_context
+                )
+                yield response_content
+                return
+        except RedisError as e:
+            logger.error("Error retrieving form context: %s", e)
+            yield "Sorry, I'm having trouble with the form. Please try again."
+            return
+
+        conversation_history = await self._get_conversation_history()
+        conversation_history.append(HumanMessage(content=user_input))
+
+        try:
+            stream_response = self.model.astream(conversation_history)
+            full_response = ""
+            async for chunk in stream_response:
+                token = self._extract_text(chunk.content)
+                full_response += token
+                yield token
+            conversation_history.append(AIMessage(content=full_response))
+            await self._save_conversation_history(conversation_history)
+        except LangChainException as e:
+            logger.error("Error getting chat response/stream: %s", e)
+            yield "Sorry, I'm having trouble responding right now. Please try again later."
+
+    async def _batch(self, user_input: str) -> AsyncGenerator[ChatbotResponse, None]:
+        try:
+            form_context = await self.cache.get(self.FORM_CONTEXT_CACHE_KEY)
+            if form_context:
+                response_content = await self._handle_form_response(
+                    user_input, form_context
+                )
+                yield {
+                    "type": "form",
+                    "content": response_content,
+                    "form_id": form_context.get("form_id"),
+                }
+                return
+        except RedisError as e:
+            logger.error("Error retrieving form context: %s", e)
+            yield {
+                "type": "chat",
+                "content": "Sorry, I'm having trouble with the form. Please try again.",
+                "form_id": None,
+            }
+            return
+
+        # Form intent recognition (only for non-streaming initial messages)
+        form_repo = FormRepository()
+        forms = await form_repo.get_all()
+        if forms and forms.data:
+            form_list = [
+                {"id": str(f.id), "name": f.name, "description": f.description}
+                for f in forms.data
+            ]
+            prompt = f"""Given the user's message, identify if they are requesting to fill out a form.\n            User message: {user_input}\n            Available forms: {json.dumps(form_list)}\n            If a form matches, return a JSON object with the key 'form_id' and the ID of the matching form. Otherwise, return an empty JSON object."""
+            try:
+                response = await self.model.ainvoke([HumanMessage(content=prompt)])
+                if isinstance(response.content, str):
+                    response_json = json.loads(response.content)
+                    if "form_id" in response_json:
+                        yield {
+                            "type": "form_start",
+                            "content": "",
+                            "form_id": response_json["form_id"],
+                        }
+                        return
+            except (LangChainException, json.JSONDecodeError) as e:
+                logger.error("Error identifying form: %s", e)
+
+        # Regular chat logic
+        conversation_history = await self._get_conversation_history()
+        conversation_history.append(HumanMessage(content=user_input))
+
+        try:
+            response = await self.model.ainvoke(conversation_history)
+            conversation_history.append(AIMessage(content=response.content))
+            await self._save_conversation_history(conversation_history)
+
+            content = ""
+            if isinstance(response.content, str):
+                content = response.content
+            elif isinstance(response.content, list):
+                content = " ".join(str(item) for item in response.content)
+            else:
+                content = str(response.content)
+            yield {"type": "chat", "content": content, "form_id": None}
+        except LangChainException as e:
+            logger.error("Error getting chat response/stream: %s", e)
+            yield {
+                "type": "chat",
+                "content": "Sorry, I'm having trouble responding right now. Please try again later.",
+                "form_id": None,
+            }

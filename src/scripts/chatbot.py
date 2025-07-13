@@ -1,6 +1,6 @@
+import asyncio
 import os
 import sys
-import asyncio
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
@@ -24,7 +24,7 @@ async def main():
     """
     print("Initializing Chatbot...")
     try:
-        chatbot = Chatbot()
+        chatbot = Chatbot(session_id="test")
     except (KeyboardInterrupt, EOFError, Exception) as e:
         print(f"\nError initializing Chatbot: {e}")
         print(
@@ -46,10 +46,10 @@ async def main():
                 print("Goodbye!")
                 break
             elif user_input.lower() == "--clear":
-                chatbot.clear_history()
+                await chatbot.clear_history()
                 print("\n[System: Conversation history cleared.]\n")
             elif user_input.lower() == "--history":
-                history = chatbot.get_history()
+                history = await chatbot.get_history()
                 print("\n--- Conversation History ---")
                 if not history:
                     print("(empty)")
@@ -60,17 +60,15 @@ async def main():
                 parts = user_input.split(maxsplit=1)
                 if len(parts) > 1 and parts[1]:
                     system_prompt = parts[1]
-                    chatbot.set_system_prompt(system_prompt)
+                    await chatbot.set_system_prompt(system_prompt)
                     print(f"\n[System: Prompt set to '{system_prompt}']\n")
                 else:
                     print("\n[System: --system command requires a prompt.]\n")
             else:
                 print("\nBot: ", end="", flush=True)
-                async for token in chatbot.chat_stream(user_input):
+                async for token in chatbot.chat(user_input, stream=True):
                     print(token, end="", flush=True)
                 print("")
-                # response = chatbot.chat_response(user_input)
-                # print(response)
                 print("")
 
         except (KeyboardInterrupt, EOFError):

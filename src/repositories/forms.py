@@ -156,28 +156,14 @@ class FormRepository(BaseRepository):
         finally:
             await self.close_database_session()
 
-    async def delete(self, id: UUID) -> APIResponse | None:
+    async def get_all(self) -> APIResponse[list[FormRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            statement = select(Forms).where(
-                Forms.id == id,
-                (getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
-                if hasattr(Forms, "is_deleted")
-                else True,
-            )
+            statement = select(Forms).where(Forms.is_deleted == False)
             result = await db.execute(statement)
-            form = result.scalar_one_or_none()
-            if not form:
-                raise APIError(404, "Form not found")
-            if hasattr(form, "soft_delete"):
-                form.soft_delete()
-            elif hasattr(form, "is_deleted"):
-                form.is_deleted = True
-            else:
-                raise APIError(400, "Soft delete not supported on Forms model")
-            db.add(form)
-            await db.commit()
-            return APIResponse(message="Form soft-deleted")
+            forms = result.scalars().unique().all()
+            data = [FormRead.model_validate(form) for form in forms]
+            return APIResponse[list[FormRead]](data=data)
         finally:
             await self.close_database_session()
 
