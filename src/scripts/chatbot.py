@@ -25,6 +25,7 @@ async def main():
     print("Initializing Chatbot...")
     try:
         chatbot = Chatbot(session_id="test")
+        await chatbot.initialize()
     except (KeyboardInterrupt, EOFError, Exception) as e:
         print(f"\nError initializing Chatbot: {e}")
         print(
@@ -68,7 +69,6 @@ async def main():
                 print("\nBot: ", end="", flush=True)
                 async for token in chatbot.chat(user_input, stream=True):
                     print(token, end="", flush=True)
-                print("")
                 print("")
 
         except (KeyboardInterrupt, EOFError):

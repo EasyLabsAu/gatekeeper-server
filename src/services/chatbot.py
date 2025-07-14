@@ -5,6 +5,7 @@ from typing import Any, Literal, TypedDict, overload
 
 from aioredis import RedisError
 from langchain.chat_models import init_chat_model
+from langchain_core.documents import Document
 from langchain_core.exceptions import LangChainException
 from langchain_core.messages import (
     AIMessage,
@@ -14,10 +15,18 @@ from langchain_core.messages import (
     messages_from_dict,
     messages_to_dict,
 )
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_postgres import PGEngine
+from langchain_postgres.v2.async_vectorstore import AsyncPGVectorStore
 
 from src.core.config import settings
 from src.helpers.cache import Cache
 from src.helpers.logger import Logger
+from src.models.contexts import ContextCategory, Contexts
+from src.repositories.contexts import ContextRepository
 from src.repositories.forms import FormRepository
 
 logger = Logger(__name__)
@@ -46,12 +55,15 @@ class Chatbot:
         llm_provider: str = settings.LLM_PROVIDER,
         model_name: str = settings.LLM_MODEL,
         llm_key: str = settings.LLM_KEY,
+        embedding_model: str = settings.LLM_EMBEDDING_MODEL,
     ):
         if not session_id:
             raise ValueError("session_id is required for Chatbot")
 
         if llm_provider == "google_genai":
             os.environ["GOOGLE_API_KEY"] = llm_key
+        else:
+            raise ValueError(f"Unsupported LLM provider: {llm_provider}")
 
         self.model = init_chat_model(
             model_name,
@@ -59,6 +71,104 @@ class Chatbot:
         )
         self.session_id = session_id
         self.cache = Cache(key_prefix=f"chatbot:{self.session_id}")
+        self.embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model)
+        self.vector_store: AsyncPGVectorStore | None = None
+        self.retriever: Any = None
+        self.context_repo = ContextRepository()
+        self.system_prompt: str | None = None
+        self.rag_chain: Any = None
+
+    async def initialize(self):
+        engine = PGEngine.from_connection_string(url=str(settings.POSTGRES_URI))
+        self.vector_store = await AsyncPGVectorStore.create(
+            engine=engine,
+            table_name=str(Contexts.__tablename__),
+            embedding_service=self.embeddings,
+            id_column="id",
+            content_column="data",
+        )
+        self.retriever = self.vector_store.as_retriever()
+        self.rag_chain = self._create_rag_chain()
+
+    async def _initialize_system_prompt(self):
+        if self.system_prompt is not None:
+            return
+
+        contexts = await self.context_repo.find(query=None)
+        if not contexts or not contexts.data:
+            self.system_prompt = "You are a helpful assistant."
+            return
+
+        info_contexts = [
+            c.data for c in contexts.data if c.category == ContextCategory.INFORMATION
+        ]
+        rule_contexts = [
+            c.data for c in contexts.data if c.category == ContextCategory.RULE
+        ]
+        param_contexts = [
+            c.data for c in contexts.data if c.category == ContextCategory.PARAMETER
+        ]
+
+        prompt_parts = ["You are an AI assistant with the following characteristics:"]
+
+        if param_contexts:
+            prompt_parts.append("\n--- PARAMETERS ---")
+            prompt_parts.append(
+                "You must operate within these parameters at all times:"
+            )
+            prompt_parts.append(json.dumps(param_contexts, indent=2))
+
+        if rule_contexts:
+            prompt_parts.append("\n--- RULES ---")
+            prompt_parts.append("You must strictly adhere to the following rules:")
+            prompt_parts.append(json.dumps(rule_contexts, indent=2))
+
+        if info_contexts:
+            prompt_parts.append("\n--- BACKGROUND INFORMATION ---")
+            prompt_parts.append(
+                "This is general information you can use to answer questions:"
+            )
+            prompt_parts.append(json.dumps(info_contexts, indent=2))
+
+        self.system_prompt = "\n".join(prompt_parts)
+
+    def _create_rag_chain(self):
+        def format_docs(docs: list[Document]) -> str:
+            formatted_docs = []
+            for doc in docs:
+                metadata = doc.metadata
+                content = (
+                    f"Source Name: {metadata.get('name', 'N/A')}\n"
+                    f"Category: {metadata.get('category', 'N/A')}\n"
+                    f"Data: {json.dumps(metadata.get('data', {}))}"
+                )
+                formatted_docs.append(content)
+            return "\n\n---\n\n".join(formatted_docs)
+
+        template = """{system_prompt}
+
+Use the following pieces of retrieved context to answer the user's question.
+If you don't know the answer, just say that you don't know.
+Keep the answer concise and helpful.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
+        prompt = ChatPromptTemplate.from_template(template)
+
+        return (
+            {
+                "context": self.retriever | format_docs,
+                "question": RunnablePassthrough(),
+                "system_prompt": lambda _: self.system_prompt,
+            }
+            | prompt
+            | self.model
+            | StrOutputParser()
+        )
 
     async def _get_conversation_history(self) -> list[BaseMessage]:
         try:
@@ -129,19 +239,6 @@ class Chatbot:
                 logger.error("Error completing form: %s", e)
                 return "Thank you for completing the form."
 
-    def _extract_text(self, content: str | list | dict) -> str:
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            return " ".join(
-                str(item) if isinstance(item, str | int | float | dict) else ""
-                for item in content
-            )
-        elif isinstance(content, dict):
-            return str(content)
-        else:
-            return ""
-
     async def clear_history(self):
         try:
             await self.cache.delete(self.HISTORY_CACHE_KEY)
@@ -185,16 +282,17 @@ class Chatbot:
             yield "Sorry, I'm having trouble with the form. Please try again."
             return
 
-        conversation_history = await self._get_conversation_history()
-        conversation_history.append(HumanMessage(content=user_input))
+        await self._initialize_system_prompt()
 
         try:
-            stream_response = self.model.astream(conversation_history)
+            stream_response = self.rag_chain.astream(user_input)
             full_response = ""
             async for chunk in stream_response:
-                token = self._extract_text(chunk.content)
-                full_response += token
-                yield token
+                full_response += chunk
+                yield chunk
+
+            conversation_history = await self._get_conversation_history()
+            conversation_history.append(HumanMessage(content=user_input))
             conversation_history.append(AIMessage(content=full_response))
             await self._save_conversation_history(conversation_history)
         except LangChainException as e:
@@ -223,7 +321,8 @@ class Chatbot:
             }
             return
 
-        # Form intent recognition (only for non-streaming initial messages)
+        await self._initialize_system_prompt()
+
         form_repo = FormRepository()
         forms = await form_repo.get_all()
         if forms and forms.data:
@@ -231,38 +330,37 @@ class Chatbot:
                 {"id": str(f.id), "name": f.name, "description": f.description}
                 for f in forms.data
             ]
-            prompt = f"""Given the user's message, identify if they are requesting to fill out a form.\n            User message: {user_input}\n            Available forms: {json.dumps(form_list)}\n            If a form matches, return a JSON object with the key 'form_id' and the ID of the matching form. Otherwise, return an empty JSON object."""
+            prompt = f"""Given the user\'s message, identify if they are requesting to fill out a form.
+                    User message: {user_input}
+                    Available forms: {json.dumps(form_list)}
+                    If a form matches, return a JSON object with the key 'form_id' and the ID of the matching form. Otherwise, return an empty JSON object."""
             try:
                 response = await self.model.ainvoke([HumanMessage(content=prompt)])
                 if isinstance(response.content, str):
-                    response_json = json.loads(response.content)
-                    if "form_id" in response_json:
-                        yield {
-                            "type": "form_start",
-                            "content": "",
-                            "form_id": response_json["form_id"],
-                        }
-                        return
+                    cleaned_response = response.content.strip()
+                    if cleaned_response.startswith("{") and cleaned_response.endswith(
+                        "}"
+                    ):
+                        response_json = json.loads(cleaned_response)
+                        if "form_id" in response_json and response_json["form_id"]:
+                            yield {
+                                "type": "form_start",
+                                "content": "",
+                                "form_id": response_json["form_id"],
+                            }
+                            return
             except (LangChainException, json.JSONDecodeError) as e:
-                logger.error("Error identifying form: %s", e)
-
-        # Regular chat logic
-        conversation_history = await self._get_conversation_history()
-        conversation_history.append(HumanMessage(content=user_input))
+                logger.warning("Could not identify form, proceeding with RAG: %s", e)
 
         try:
-            response = await self.model.ainvoke(conversation_history)
-            conversation_history.append(AIMessage(content=response.content))
+            response_content = await self.rag_chain.ainvoke(user_input)
+
+            conversation_history = await self._get_conversation_history()
+            conversation_history.append(HumanMessage(content=user_input))
+            conversation_history.append(AIMessage(content=response_content))
             await self._save_conversation_history(conversation_history)
 
-            content = ""
-            if isinstance(response.content, str):
-                content = response.content
-            elif isinstance(response.content, list):
-                content = " ".join(str(item) for item in response.content)
-            else:
-                content = str(response.content)
-            yield {"type": "chat", "content": content, "form_id": None}
+            yield {"type": "chat", "content": response_content, "form_id": None}
         except LangChainException as e:
             logger.error("Error getting chat response/stream: %s", e)
             yield {

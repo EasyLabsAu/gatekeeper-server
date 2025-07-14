@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     LLM_KEY: str = ""
     LLM_MODEL: str = ""
     LLM_PROVIDER: str = ""
+    LLM_EMBEDDING_MODEL: str = ""
 
     # Environment settings
     BASE_URL: str = ""

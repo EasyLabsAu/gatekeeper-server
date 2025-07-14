@@ -1,4 +1,5 @@
 from src.models.consumers import Consumers
+from src.models.contexts import Contexts
 from src.models.forms import (
     FormQuestionResponses,
     FormQuestions,
@@ -20,4 +21,5 @@ __all__: list[str] = [
     "Forms",
     "FormSectionResponses",
     "FormSections",
+    "Contexts",
 ]

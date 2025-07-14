@@ -3,7 +3,8 @@ services:
   server:
     build:
       context: .
-      target: ${DOCKER_TARGET:-development}
+      dockerfile: Dockerfile.server
+      target: ${ENV:-development}
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -12,12 +13,16 @@ services:
     volumes:
       - ./:/app
     depends_on:
-      - db
+      - database
+      - cache
     networks:
       - gatekeeper-network
 
-  db:
-    image: postgres:16
+  database:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.database
+      target: ${ENV:-development}
     restart: unless-stopped
     env_file:
       - ./.env

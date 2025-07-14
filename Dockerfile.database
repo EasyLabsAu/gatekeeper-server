@@ -1,0 +1,11 @@
+# Stage 1: Development Environment
+FROM postgres:16 AS development
+
+RUN apt-get update && apt-get install -y postgresql-16-pgvector && rm -rf /var/lib/apt/lists/*
+
+# Stage 2: Production Environment
+FROM postgres:16-alpine AS production
+
+# Install pgvector extension
+RUN apk add --no-cache postgresql16-pgvector \
+    && rm -rf /var/cache/apk/*

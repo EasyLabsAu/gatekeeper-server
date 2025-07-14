@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlmodel import select
+from sqlmodel import text
 from tenacity import after_log, before_log, retry, stop_after_attempt, wait_fixed
 
 from src.core.config import settings
@@ -16,7 +16,7 @@ logger = Logger(__name__)
 
 DATABASE_URI = str(settings.POSTGRES_URI)
 
-# Create async engine with connection pooling
+
 engine = create_async_engine(
     DATABASE_URI,
     pool_size=5,
@@ -27,7 +27,7 @@ engine = create_async_engine(
     echo=False,
 )
 
-# Create async session factory
+
 SessionFactory = async_sessionmaker(
     bind=engine,
     expire_on_commit=False,
@@ -44,18 +44,17 @@ wait_seconds = 1
     before=before_log(logger, logging.INFO),
     after=after_log(logger, logging.WARN),
 )
-async def check_database_connection(db_engine: AsyncEngine) -> bool:
-    """Health check for database connection."""
+async def validate_database_health(db_engine: AsyncEngine) -> bool:
     session = None
     try:
         TempSession = async_sessionmaker(db_engine, expire_on_commit=False)
         session = TempSession()
-        await session.execute(select(1))
-        logger.info("Database health check successful.")
+        await session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        logger.info("Database health check successful (extensions available : vector)")
         await session.close()
         return True
     except Exception as e:
         if session is not None:
             await session.close()
-        logger.error(f"Database health check failed: {e}")
+        logger.error("Database health check failed: %s", e)
         return False

@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 
 from src.api import setup_http_routes, setup_websocket_events
 from src.core.config import settings
-from src.core.database import check_database_connection, engine
+from src.core.database import engine, validate_database_health
 from src.core.http import HTTP_GATEWAY
 from src.core.socket import SOCKET_GATEWAY
 from src.helpers.constants import (
@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
             "CORS Origins: %s",
             settings.CORS_ORIGINS,
         )
-        if not await check_database_connection(engine):
+        if not await validate_database_health(engine):
             raise RuntimeError("Database connection failed after retries")
 
         logger.info("Database connection established successfully")

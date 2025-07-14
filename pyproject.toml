@@ -30,7 +30,9 @@ dependencies = [
     "aiofiles>=24.1.0",
     "langchain>=0.3.26",
     "langgraph>=0.5.2",
-    "langchain-google-genai>=2.1.7"
+    "langchain-google-genai>=2.1.7",
+    "langchain-postgres>=0.0.15",
+    "pgvector"
 ]
 
 [dependency-groups]
