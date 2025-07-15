@@ -3,8 +3,6 @@ from src.core.config import settings
 PROVIDER_CREATED_EVENT = "provider_created"
 PROVIDER_PASSWORD_RESET_EVENT = "provider_password_reset"
 
-CHAT_UPDATED_EVENT = "chat_updated"
-
 HTTP_API_PREFIX = "/api/rest"
 WEBSOCKET_API_PREFIX = "/api/websocket"
 

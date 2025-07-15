@@ -6,10 +6,6 @@ from uuid import UUID
 from socketio import AsyncServer
 
 from src.helpers.cache import Cache
-from src.helpers.constants import (
-    CHAT_UPDATED_EVENT,
-)
-from src.helpers.events import events
 from src.helpers.logger import Logger
 from src.helpers.model import utc_now
 from src.models.chat import Chat, ChatType
@@ -129,7 +125,6 @@ async def _get_or_create_session(client_id: str, socket_session: dict) -> str | 
             return session_id
         return None
     else:
-        # Validate session exists
         await session_repository.get(UUID(session_id))
         return session_id
 
@@ -143,24 +138,29 @@ async def _create_form_responses(
     form_id = UUID(form_id_str)
     session_id = UUID(session_id_str)
 
+    collected_responses_json = [
+        {"form_id": form_id_str, "question_id": q_id, "answer": answer}
+        for q_id, answer in responses.items()
+    ]
+    logger.info(
+        "Collected Form Responses: %s", json.dumps(collected_responses_json, indent=2)
+    )
+
     form_repo = FormRepository()
     form_response_repo = FormResponseRepository()
     form_section_response_repo = FormSectionResponseRepository()
     form_question_response_repo = FormQuestionResponseRepository()
 
-    # Fetch the entire form structure once to avoid N+1 queries
     form_data_response = await form_repo.get(form_id)
     if not form_data_response or not form_data_response.data:
         logger.error("Form not found when creating responses: %s", form_id)
         return
 
     form_data = form_data_response.data
-    # Create a map of question IDs to their section IDs for efficient lookup
     question_to_section_map = {
         str(q.id): s.id for s in form_data.sections for q in s.questions
     }
 
-    # Create the main form response entry
     form_response = await form_response_repo.create(
         FormResponsesCreate(
             form_id=form_id, session_id=session_id, submitted_at=utc_now()
@@ -182,7 +182,6 @@ async def _create_form_responses(
             logger.warning("Question %s not found in form %s", question_id, form_id)
             continue
 
-        # Get or create the section response entry
         section_response_id = section_responses_map.get(section_id)
         if not section_response_id:
             section_response = await form_section_response_repo.create(
@@ -198,7 +197,6 @@ async def _create_form_responses(
             section_response_id = section_response.data.id
             section_responses_map[section_id] = section_response_id
 
-        # Create the question response entry
         await form_question_response_repo.create(
             FormQuestionResponsesCreate(
                 section_response_id=section_response_id,
@@ -308,16 +306,11 @@ def chat_events(sio: AsyncServer):
                             if chunk_form_id:
                                 await set_form_id(client_id, chunk_form_id)
 
-                            if (
-                                chunk_content
-                                == "Thank you for completing the form."
-                            ):
+                            if chunk_content == "Thank you for completing the form.":
                                 form_id = chunk_form_id
                                 if form_id:
-                                    form_responses = (
-                                        await chatbot.cache.hash_get_all(
-                                            f"{chatbot.FORM_RESPONSES_CACHE_KEY_PREFIX}:{form_id}"
-                                        )
+                                    form_responses = await chatbot.cache.hash_get_all(
+                                        f"{chatbot.FORM_RESPONSES_CACHE_KEY_PREFIX}:{form_id}"
                                     )
                                     if form_responses:
                                         await _create_form_responses(
@@ -353,10 +346,10 @@ def chat_events(sio: AsyncServer):
                             ).model_dump(),
                         )
 
+                    session_repository = SessionRepository()
                     current_transcriptions = await get_transcriptions(client_id)
-                    await events.emit(
-                        CHAT_UPDATED_EVENT,
-                        session_id,
+                    await session_repository.update(
+                        UUID(session_id),
                         SessionUpdate(
                             transcription=current_transcriptions,
                         ),
