@@ -27,10 +27,6 @@ form_data = {
     "name": "Paint Job Request",
     "type": "survey",
     "description": "A form to collect details from homeowners about their paint job needs.",
-    "chat_meta_data": {
-        "welcome_message": "Hello! I'm here to help you with your paint job request. Let's get started!",
-        "farewell_message": "Thank you for providing the details. We'll be in touch soon!",
-    },
 }
 
 sections_data = [
@@ -185,40 +181,74 @@ def main():
     SQLModel.metadata.create_all(engine)
 
     with Session(engine) as session:
-        provider = Providers(**provider_data)
+        # Create provider
+        provider = Providers(
+            email=provider_data["email"],
+            first_name=provider_data["first_name"],
+            last_name=provider_data["last_name"],
+            password=provider_data["password"],
+            phone_number=provider_data["phone_number"],
+            is_verified=provider_data["is_verified"],
+            access=provider_data["access"],
+        )
         session.add(provider)
         session.commit()
         session.refresh(provider)
 
+        # Create form
+        form_embedding = (
+            f"{form_data['name']}\n{form_data['type']}\n{form_data['description']}"
+        )
         form = Forms(
             name=form_data["name"],
             type=form_data["type"],
             description=form_data["description"],
             created_by=provider.id,
-            chat_meta_data=form_data["chat_meta_data"],
+            embedding=embeddings_model.embed_query(form_embedding),
         )
         session.add(form)
         session.commit()
         session.refresh(form)
 
+        # Add sections and questions
         for section_info in sections_data:
-            section = FormSections(**section_info, form_id=form.id)
+            section_embedding = f"{section_info['title']}"
+            section = FormSections(
+                title=section_info["title"],
+                order=section_info["order"],
+                form_id=form.id,
+                embedding=embeddings_model.embed_query(section_embedding),
+            )
             session.add(section)
             session.commit()
             session.refresh(section)
 
             for question_info in questions_data[section.title]:
-                question = FormQuestions(**question_info, section_id=section.id)
+                question_embedding = (
+                    f"{question_info['label']}\n{question_info['prompt']}"
+                )
+                if question_info.get("options"):
+                    question_embedding += f"\n{','.join(question_info['options'])}"
+                question = FormQuestions(
+                    label=question_info["label"],
+                    prompt=question_info["prompt"],
+                    field_type=question_info["field_type"],
+                    required=question_info["required"],
+                    order=question_info["order"],
+                    section_id=section.id,
+                    options=question_info.get("options"),
+                    embedding=embeddings_model.embed_query(question_embedding),
+                )
                 session.add(question)
                 session.commit()
 
+        # Add contexts
         for context_info in context_data:
-            embedding = embeddings_model.embed_query(str(context_info["data"]))
             context = Contexts(
                 name=context_info["name"],
                 data=context_info["data"],
                 category=context_info["category"],
-                embedding=embedding,
+                embedding=embeddings_model.embed_query(str(context_info["data"])),
                 meta_data=context_info.get("meta_data"),
             )
             session.add(context)

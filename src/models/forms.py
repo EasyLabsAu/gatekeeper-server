@@ -3,6 +3,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Column, Text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql.json import JSONB
@@ -32,9 +33,7 @@ class Forms(BaseModel, table=True):
     description: str | None = None
     created_by: UUID = Field(foreign_key="providers.id")
     meta_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
-    chat_meta_data: dict[str, Any] = Field(
-        default_factory=dict, sa_column=Column(JSONB)
-    )
+    embedding: list[float] | None = Field(default=None, sa_column=Column(Vector(768)))
 
     sections: list["FormSections"] = Relationship(
         back_populates="form", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
@@ -85,6 +84,7 @@ class FormSections(BaseModel, table=True):
     title: str  # Section title
     description: str | None = None  # Optional section description
     order: int  # Position of the section in the form
+    embedding: list[float] | None = Field(default=None, sa_column=Column(Vector(768)))
 
     form: "Forms" = Relationship(back_populates="sections")
     questions: list["FormQuestions"] = Relationship(
@@ -140,6 +140,7 @@ class FormQuestions(BaseModel, table=True):
         sa_column=Column(ARRAY(Text())),
         description="Applicable for single/multiple choice fields",
     )
+    embedding: list[float] | None = Field(default=None, sa_column=Column(Vector(768)))
 
     section: "FormSections" = Relationship(back_populates="questions")
     responses: list["FormQuestionResponses"] = Relationship(back_populates="question")
