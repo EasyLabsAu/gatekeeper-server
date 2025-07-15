@@ -28,7 +28,7 @@ from src.helpers.cache import Cache
 from src.helpers.logger import Logger
 from src.helpers.model import APIError
 from src.models.contexts import ContextCategory, Contexts
-from src.models.forms import FormQuestions, Forms, FormSections
+from src.models.forms import FormQuery, FormQuestions, Forms, FormSections
 from src.repositories.contexts import ContextRepository
 from src.repositories.forms import FormRepository
 
@@ -70,6 +70,7 @@ class Chatbot:
     FORM_CONTEXT_CACHE_KEY = "form_context"
     FORM_RESPONSES_CACHE_KEY_PREFIX = "form_responses"
     SYSTEM_PROMPT_CACHE_KEY = "system_prompt"
+    FORM_INDEX_CACHE_KEY = "form_index"
 
     def __init__(
         self,
@@ -97,8 +98,6 @@ class Chatbot:
         self.engine: PGEngine | None = None
         self.vector_store: AsyncPGVectorStore | None = None
         self.form_vector_store: AsyncPGVectorStore | None = None
-        self.form_section_vector_store: AsyncPGVectorStore | None = None
-        self.form_question_vector_store: AsyncPGVectorStore | None = None
         self.context_retriever: Any = None
         self.context_repo = ContextRepository()
         self.form_repo = FormRepository()
@@ -120,26 +119,35 @@ class Chatbot:
             embedding_service=self.embeddings,
             id_column="id",
             content_column="name",
-            metadata_columns=["description"],
-        )
-        self.form_section_vector_store = await AsyncPGVectorStore.create(
-            engine=self.engine,
-            table_name=str(FormSections.__tablename__),
-            embedding_service=self.embeddings,
-            id_column="id",
-            content_column="title",
-            metadata_columns=["description"],
-        )
-        self.form_question_vector_store = await AsyncPGVectorStore.create(
-            engine=self.engine,
-            table_name=str(FormQuestions.__tablename__),
-            embedding_service=self.embeddings,
-            id_column="id",
-            content_column="label",
-            metadata_columns=["prompt", "options"],
+            metadata_columns=["id", "description"],  # Ensure 'id' is in metadata
         )
         self.context_retriever = self.vector_store.as_retriever()
         self.rag_chain = self._create_rag_chain()
+        await self._create_form_index_cache()
+
+    async def _create_form_index_cache(self):
+        """Fetches all forms and caches their essential details."""
+        try:
+            forms_response = await self.form_repo.find(query=FormQuery(), limit=1000)
+            if forms_response and forms_response.data:
+                form_index = [
+                    {
+                        "id": str(form.id),
+                        "name": form.name,
+                        "description": form.description or "",
+                    }
+                    for form in forms_response.data
+                    if form and form.name
+                ]
+                if form_index:
+                    await self.cache.set(
+                        self.FORM_INDEX_CACHE_KEY, form_index, ttl=3600
+                    )
+                    logger.info(f"Successfully cached {len(form_index)} forms.")
+                else:
+                    logger.warning("No valid forms found to create index cache.")
+        except Exception as e:
+            logger.error(f"Failed to create form index cache: {e}")
 
     async def _initialize_system_prompt(self):
         """Initialize system prompt with caching"""
@@ -315,9 +323,9 @@ class Chatbot:
                 return "Thank you for completing the form."
 
     async def chat(self, user_input: str) -> AsyncGenerator[ChatbotResponse, None]:
-        """Improved chat flow with better form detection"""
+        """Handles the chat flow, including form detection and RAG."""
         try:
-            # 1. First check if we're in an active form
+            # 1. Check if currently in a form-filling flow
             form_context = await self.cache.get(self.FORM_CONTEXT_CACHE_KEY)
             if form_context:
                 response_content = await self._handle_form_response(
@@ -330,25 +338,23 @@ class Chatbot:
                 }
                 return
 
-            # 2. Try to detect form intent early
-            form_intent = await self._detect_form_intent(user_input)
-            if form_intent and form_intent.get("form_id"):
-                form_id = form_intent["form_id"]
-                first_question = await self.add_form_context(form_id)
+            # 2. Detect if the user's intent is to start a form
+            form_id_str = await self._detect_form_intent(user_input)
+            if form_id_str:
+                yield {
+                    "flow": "form",
+                    "content": "I can help with that. To get started, I just need a few details.",
+                    "form_id": form_id_str,
+                }
+                first_question = await self.add_form_context(form_id_str)
                 yield {
                     "flow": "form",
                     "content": first_question,
-                    "form_id": form_id,
+                    "form_id": form_id_str,
                 }
                 return
 
-            # 3. Handle info requests about forms/sections/questions
-            if form_intent and form_intent.get("item_type"):
-                info_response = await self._handle_info_request(form_intent)
-                yield {"flow": "generic", "content": info_response, "form_id": None}
-                return
-
-            # 4. Fall back to general RAG chat
+            # 3. Fallback to general RAG-based chat
             await self._initialize_system_prompt()
             async for chunk in self._generate_rag_response(user_input):
                 yield chunk
@@ -383,157 +389,60 @@ class Chatbot:
                 "form_id": None,
             }
 
-    async def _detect_form_intent(self, user_input: str) -> dict:
-        """Separate method for form intent detection"""
+    async def _detect_form_intent(self, user_input: str) -> str | None:
+        """Detects if the user's input matches a form's intent."""
+        # 1. Keyword search on form names (high confidence)
         try:
-            relevant_items = await self._get_scored_relevant_items(user_input)
+            form_index = await self.cache.get(self.FORM_INDEX_CACHE_KEY)
+            if form_index:
+                stop_words = {
+                    "a",
+                    "an",
+                    "the",
+                    "is",
+                    "in",
+                    "it",
+                    "of",
+                    "for",
+                    "i",
+                    "want",
+                    "to",
+                    "get",
+                }
+                user_input_keywords = set(user_input.lower().split()) - stop_words
 
-            if not relevant_items:
-                return {}
-
-            prompt = self._create_intent_detection_prompt(user_input, relevant_items)
-
-            response = await self.model.ainvoke([HumanMessage(content=prompt)])
-            if isinstance(response.content, str):
-                return await self._parse_llm_json_response(response.content)
-
-            return {}
-
+                for form in form_index:
+                    form_name_keywords = set(form["name"].lower().split())
+                    if form_name_keywords & user_input_keywords:
+                        logger.info(f"Found keyword match for form '{form['name']}'.")
+                        return form["id"]
         except Exception as e:
-            logger.error(f"Error in form intent detection: {e}")
-            return {}
+            logger.warning(f"Could not use form index cache for keyword search: {e}")
 
-    def _create_intent_detection_prompt(
-        self, user_input: str, relevant_items: list
-    ) -> str:
-        return f"""Given the user's message, your goal is to determine if they are expressing an intent to start or fill out a form, or if they are asking a question about a specific form, section, or question.
-
-User message: {user_input}
-
-Available relevant items (ranked by relevance, most relevant first):
-{json.dumps(relevant_items, indent=2)}
-
-Instructions:
-1. Your primary goal is to determine if the user wants to fill out a form. If their message's intent matches a form's purpose, you must identify it.
-2. Analyze the user's message and the provided relevant items.
-3. If the user's message clearly indicates a desire to start or fill out a form, identify the most relevant form from the 'combined_relevant_items' and return a JSON object with the key 'form_id' and the ID of that form. Prioritize forms if the intent is clear.
-4. If the user is asking a question about a specific form, section, or question (e.g., \"What is the 'Paint Job Request' form about?\", \"Tell me about the 'Customer Info' section\", \"What is the 'Name' question?\"), identify the most relevant item and return a JSON object with the key 'item_type' (e.g., 'form', 'section', or 'question') and 'item_id'.
-5. If no clear intent to start a form or inquire about a specific item is found, return an empty JSON object {{}}.
-
-Examples of user intent and expected JSON output:
-- User wants to start a form: \"I want to request a paint job\" -> {{\"form_id\": \"id_of_paint_job_form\"}}
-- User asks about a form: \"What is the paint job form?\" -> {{\"item_type\": \"form\", \"item_id\": \"id_of_paint_job_form\"}}
-- User asks about a section: \"Tell me about the customer info section\" -> {{\"item_type\": \"section\", \"item_id\": \"id_of_customer_info_section\"}}
-- User asks about a question: \"What is the name question?\" -> {{\"item_type\": \"question\", \"item_id\": \"id_of_name_question\"}}
-- User asks a general question not related to forms: \"What is your company?\" -> {{}}
-
-Your JSON response:"""
-
-    async def _parse_llm_json_response(self, response_content: str) -> dict:
-        """Robust JSON parsing from LLM response"""
+        # 2. Vector search on form names and descriptions (medium confidence)
         try:
-            cleaned = response_content.strip()
-            if cleaned.startswith("```json"):
-                cleaned = cleaned[7:]
-            if cleaned.endswith("```"):
-                cleaned = cleaned[:-3]
-            if cleaned.startswith("```"):
-                cleaned = cleaned[3:]
+            if not self.form_vector_store:
+                raise VectorSearchError("Form vector store is not initialized.")
 
-            cleaned = cleaned.strip()
-
-            json_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-            if json_match:
-                json_str = json_match.group()
-                parsed = json.loads(json_str)
-
-                if isinstance(parsed, dict):
-                    return parsed
-
-            return {}
-        except (json.JSONDecodeError, AttributeError) as e:
-            logger.warning(f"Failed to parse LLM JSON response: {e}")
-            return {}
-
-    async def _get_scored_relevant_items(
-        self, user_input: str, max_distance: float = 0.6
-    ):
-        """Get relevant items with similarity scoring.
-        Note: For cosine distance, a lower score indicates higher similarity.
-        """
-        try:
-            if not (
-                self.form_vector_store
-                and self.form_section_vector_store
-                and self.form_question_vector_store
-            ):
-                raise VectorSearchError("Vector stores are not initialized.")
-
-            form_results = (
-                await self.form_vector_store.asimilarity_search_with_score(
-                    user_input, k=3
-                )
-            )
-            section_results = (
-                await self.form_section_vector_store.asimilarity_search_with_score(
-                    user_input, k=3
-                )
-            )
-            question_results = (
-                await self.form_question_vector_store.asimilarity_search_with_score(
-                    user_input, k=3
-                )
+            results = await self.form_vector_store.asimilarity_search_with_score(
+                user_input, k=1
             )
 
-            combined_relevant_items = []
-
-            for doc, score in form_results:
+            if results:
+                doc, score = results[0]
+                max_distance = 0.6  # Stricter threshold
                 if score <= max_distance:
-                    combined_relevant_items.append(
-                        {
-                            "type": "form",
-                            "id": str(doc.metadata.get("id")),
-                            "name": doc.page_content,
-                            "description": doc.metadata.get("description"),
-                            "score": score,
-                            "priority": 1,
-                        }
-                    )
-
-            for doc, score in section_results:
-                if score <= max_distance * 1.2:  # Looser threshold for sections
-                    combined_relevant_items.append(
-                        {
-                            "type": "section",
-                            "id": str(doc.metadata.get("id")),
-                            "title": doc.page_content,
-                            "description": doc.metadata.get("description"),
-                            "score": score,
-                            "priority": 2,
-                        }
-                    )
-
-            for doc, score in question_results:
-                if score <= max_distance * 1.2:  # Looser threshold for questions
-                    combined_relevant_items.append(
-                        {
-                            "type": "question",
-                            "id": str(doc.metadata.get("id")),
-                            "label": doc.page_content,
-                            "prompt": doc.metadata.get("prompt"),
-                            "options": doc.metadata.get("options"),
-                            "score": score,
-                            "priority": 3,
-                        }
-                    )
-
-            combined_relevant_items.sort(key=lambda x: (x["priority"], x["score"]))
-
-            return combined_relevant_items
+                    form_id = str(doc.metadata.get("id"))
+                    if form_id and form_id.lower() != "none":
+                        logger.info(
+                            f"Found semantic match for form '{doc.page_content}' with score {score}."
+                        )
+                        return form_id
 
         except Exception as e:
-            await self._handle_vector_search_error(e)
-            return []
+            logger.error(f"Error during vector search for form intent: {e}")
+
+        return None
 
     async def _get_form_questions_ordered(self, form_id: str) -> list[FormQuestion]:
         """Get form questions ordered by section and question order"""
@@ -546,11 +455,9 @@ Your JSON response:"""
             form = form_response.data
 
             all_questions = []
-            # Sections should be sorted by their 'order' attribute
             sorted_sections = sorted(form.sections, key=lambda s: s.order)
 
             for section in sorted_sections:
-                # Questions within each section should be sorted by their 'order' attribute
                 sorted_questions = sorted(section.questions, key=lambda q: q.order)
                 for q in sorted_questions:
                     all_questions.append(
@@ -562,7 +469,6 @@ Your JSON response:"""
                     )
             return all_questions
         except APIError as e:
-            # Catch APIError from repository if form not found
             logger.error(f"APIError fetching questions for form {form_id}: {e}")
             return []
         except Exception as e:
@@ -572,17 +478,8 @@ Your JSON response:"""
     async def _handle_cache_error(self, operation: str, error: Exception):
         """Handle cache-related errors gracefully"""
         logger.error(f"Cache error during {operation}: {error}")
-        # In a real app, you might return a message to the user.
-        # For now, we just log it.
 
     async def _handle_vector_search_error(self, error: Exception):
         """Handle vector search errors"""
         logger.error(f"Vector search error: {error}")
         raise VectorSearchError("Failed to search for relevant items.") from error
-
-    async def _handle_info_request(self, intent: dict) -> str:
-        # This is a placeholder. You would implement logic to fetch details
-        # about the form, section, or question and return a helpful string.
-        item_type = intent.get("item_type")
-        item_id = intent.get("item_id")
-        return f"Here is information about {item_type} {item_id}."
