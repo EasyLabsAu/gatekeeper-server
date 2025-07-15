@@ -14,5 +14,4 @@ class Chat(BaseModel):
     client_id: str
     sender: str | None
     message: str | None
-    form: str | None = None
     timestamp: str | None

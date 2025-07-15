@@ -43,16 +43,16 @@ async def delete_sessions(client_id: str):
     )
 
 
-async def get_transcriptions(client_id: str) -> list[dict]:
+async def get_transcripts(client_id: str) -> list[dict]:
     try:
-        return await cache.list_get(f"transcriptions:{client_id}") or []
+        return await cache.list_get(f"transcripts:{client_id}") or []
     except (AttributeError, TypeError):
-        await cache.delete(f"transcriptions:{client_id}")
+        await cache.delete(f"transcripts:{client_id}")
         return []
 
 
-async def append_transcription(client_id: str, message: dict):
-    await cache.list_append(f"transcriptions:{client_id}", message)
+async def append_transcript(client_id: str, message: dict):
+    await cache.list_append(f"transcripts:{client_id}", message)
 
 
 async def set_form_id(client_id: str, form_id: str):
@@ -109,9 +109,9 @@ async def _get_or_create_session(client_id: str, socket_session: dict) -> str | 
     session_repository = SessionRepository()
 
     if not session_id:
-        current_transcriptions = await get_transcriptions(client_id)
+        current_transcripts = await get_transcripts(client_id)
         session_data = SessionCreate(
-            transcription=current_transcriptions,
+            transcript=current_transcripts,
             meta_data={
                 "client_fingerprint": client_id,
                 "user_agent": socket_session.get("user_agent", "unknown"),
@@ -224,8 +224,8 @@ def chat_events(sio: AsyncServer):
                 user_message = parsed_data.get("message")
 
                 if user_message and sender == "user":
-                    transcriptions = await get_transcriptions(client_id)
-                    if not transcriptions:
+                    transcripts = await get_transcripts(client_id)
+                    if not transcripts:
                         await push_to_response_queue(
                             client_id,
                             Chat(
@@ -237,7 +237,7 @@ def chat_events(sio: AsyncServer):
                             ).model_dump(),
                         )
 
-                    await append_transcription(
+                    await append_transcript(
                         client_id,
                         Chat(
                             type=ChatType.ENGAGEMENT,
@@ -335,7 +335,7 @@ def chat_events(sio: AsyncServer):
                                 )
 
                     if full_bot_response:
-                        await append_transcription(
+                        await append_transcript(
                             client_id,
                             Chat(
                                 type=ChatType.ENGAGEMENT,
@@ -347,11 +347,11 @@ def chat_events(sio: AsyncServer):
                         )
 
                     session_repository = SessionRepository()
-                    current_transcriptions = await get_transcriptions(client_id)
+                    current_transcripts = await get_transcripts(client_id)
                     await session_repository.update(
                         UUID(session_id),
                         SessionUpdate(
-                            transcription=current_transcriptions,
+                            transcript=current_transcripts,
                         ),
                     )
                     await _process_response_queue(client_id, sio, sid)

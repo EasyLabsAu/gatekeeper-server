@@ -24,7 +24,7 @@ class Sessions(BaseModel, table=True):
         default=SessionStatus.ACTIVE,
         sa_column=Column(SAEnum(SessionStatus)),
     )
-    transcription: list[dict[str, Any]] = Field(
+    transcript: list[dict[str, Any]] = Field(
         default_factory=dict, sa_column=Column(JSONB)
     )
     activated_at: datetime = Field(
@@ -53,7 +53,7 @@ class SessionCreate(SQLModel):
     consumer_id: UUID | None = None
     form_id: UUID | None = None
     status: SessionStatus = SessionStatus.ACTIVE
-    transcription: list[dict[str, Any]]
+    transcript: list[dict[str, Any]]
     meta_data: dict[str, Any] | None = None
     files: list[dict[str, Any]] | None = None
     tags: list[str] | None = None
@@ -70,7 +70,7 @@ class SessionRead(SQLModel):
     tags: list[str] | None = None
     feedback: str | None = None
     rating: float | None = None
-    transcription: list[dict[str, Any]]
+    transcript: list[dict[str, Any]]
     activated_at: datetime
     concluded_at: datetime | None = None
     discarded_at: datetime | None = None
@@ -83,7 +83,7 @@ class SessionUpdate(SQLModel):
     consumer_id: UUID | None = None
     form_id: UUID | None = None
     status: SessionStatus | None = None
-    transcription: list[dict[str, Any]] | None = None
+    transcript: list[dict[str, Any]] | None = None
     activated_at: datetime | None = None
     concluded_at: datetime | None = None
     discarded_at: datetime | None = None
