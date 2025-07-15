@@ -125,6 +125,18 @@ class Chatbot:
         self.rag_chain = self._create_rag_chain()
         await self._create_form_index_cache()
 
+    async def clear_session_cache(self):
+        """Clears all cache entries associated with the current session."""
+        logger.info("Clearing cache for session_id: %s", self.session_id)
+        try:
+            await self.cache.delete(self.FORM_CONTEXT_CACHE_KEY)
+            await self.cache.delete(self.HISTORY_CACHE_KEY)
+            # Note: This does not clear form responses, which are hashed by form_id.
+            # For the test script, this is sufficient as it prevents stale form contexts.
+            logger.info("Cache cleared for session_id: %s", self.session_id)
+        except Exception as e:
+            logger.error("Error clearing cache for session %s: %s", self.session_id, e)
+
     async def _create_form_index_cache(self):
         """Fetches all forms and caches their essential details."""
         try:
@@ -391,6 +403,10 @@ class Chatbot:
 
     async def _detect_form_intent(self, user_input: str) -> str | None:
         """Detects if the user's input matches a form's intent."""
+        # Guard against very short, generic inputs
+        if len(user_input.split()) < 3:
+            return None
+
         # 1. Keyword search on form names (high confidence)
         try:
             form_index = await self.cache.get(self.FORM_INDEX_CACHE_KEY)
@@ -414,7 +430,7 @@ class Chatbot:
                 for form in form_index:
                     form_name_keywords = set(form["name"].lower().split())
                     if form_name_keywords & user_input_keywords:
-                        logger.info(f"Found keyword match for form '{form['name']}'.")
+                        logger.info(f"Found keyword match for form '{{form['name']}}'.")
                         return form["id"]
         except Exception as e:
             logger.warning(f"Could not use form index cache for keyword search: {e}")
@@ -430,12 +446,12 @@ class Chatbot:
 
             if results:
                 doc, score = results[0]
-                max_distance = 0.6  # Stricter threshold
+                max_distance = 0.5  # Stricter threshold
                 if score <= max_distance:
                     form_id = str(doc.metadata.get("id"))
                     if form_id and form_id.lower() != "none":
                         logger.info(
-                            f"Found semantic match for form '{doc.page_content}' with score {score}."
+                            f"Found semantic match for form '{{doc.page_content}}' with score {score}."
                         )
                         return form_id
 
