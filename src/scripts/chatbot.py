@@ -33,8 +33,11 @@ async def main():
                 break
             else:
                 print("\nBot: ", end="", flush=True)
-                async for token in chatbot.chat(user_input):
-                    print(token, end="", flush=True)
+                async for response in chatbot.chat(user_input):
+                    if response["flow"] == "generic":
+                        print(response["content"], end="", flush=True)
+                    elif response["flow"] == "form":
+                        print(f"📝 {response['content']}")
                 print("")
 
         except (KeyboardInterrupt, EOFError):

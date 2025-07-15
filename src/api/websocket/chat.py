@@ -20,7 +20,6 @@ from src.models.forms import (
 )
 from src.models.sessions import SessionCreate, SessionUpdate
 from src.repositories.forms import (
-    FormQuestionRepository,
     FormQuestionResponseRepository,
     FormRepository,
     FormResponseRepository,
@@ -130,6 +129,7 @@ async def _get_or_create_session(client_id: str, socket_session: dict) -> str | 
             return session_id
         return None
     else:
+        # Validate session exists
         await session_repository.get(UUID(session_id))
         return session_id
 
@@ -143,8 +143,25 @@ async def _create_form_responses(
     form_id = UUID(form_id_str)
     session_id = UUID(session_id_str)
 
-    form_response_repository = FormResponseRepository()
-    form_response = await form_response_repository.create(
+    form_repo = FormRepository()
+    form_response_repo = FormResponseRepository()
+    form_section_response_repo = FormSectionResponseRepository()
+    form_question_response_repo = FormQuestionResponseRepository()
+
+    # Fetch the entire form structure once to avoid N+1 queries
+    form_data_response = await form_repo.get(form_id)
+    if not form_data_response or not form_data_response.data:
+        logger.error("Form not found when creating responses: %s", form_id)
+        return
+
+    form_data = form_data_response.data
+    # Create a map of question IDs to their section IDs for efficient lookup
+    question_to_section_map = {
+        str(q.id): s.id for s in form_data.sections for q in s.questions
+    }
+
+    # Create the main form response entry
+    form_response = await form_response_repo.create(
         FormResponsesCreate(
             form_id=form_id, session_id=session_id, submitted_at=utc_now()
         )
@@ -154,34 +171,37 @@ async def _create_form_responses(
         logger.error("Failed to create form response")
         return
 
-    section_responses: dict[UUID, UUID] = {}
-    form_question_repository = FormQuestionRepository()
-    form_section_response_repository = FormSectionResponseRepository()
-    form_question_response_repository = FormQuestionResponseRepository()
+    form_response_id = form_response.data.id
+    section_responses_map: dict[UUID, UUID] = {}
 
     for question_id_str, answer in responses.items():
         question_id = UUID(question_id_str)
+        section_id = question_to_section_map.get(question_id_str)
 
-        question = await form_question_repository.get(question_id)
-        if not question or not question.data:
-            logger.warning("Question not found: %s", question_id)
+        if not section_id:
+            logger.warning("Question %s not found in form %s", question_id, form_id)
             continue
 
-        section_id = question.data.section_id
-        if section_id not in section_responses:
-            section_response = await form_section_response_repository.create(
+        # Get or create the section response entry
+        section_response_id = section_responses_map.get(section_id)
+        if not section_response_id:
+            section_response = await form_section_response_repo.create(
                 FormSectionResponsesCreate(
-                    response_id=form_response.data.id, section_id=section_id
+                    response_id=form_response_id, section_id=section_id
                 )
             )
             if not section_response or not section_response.data:
-                logger.error("Failed to create section response")
+                logger.error(
+                    "Failed to create section response for section %s", section_id
+                )
                 continue
-            section_responses[section_id] = section_response.data.id
+            section_response_id = section_response.data.id
+            section_responses_map[section_id] = section_response_id
 
-        await form_question_response_repository.create(
+        # Create the question response entry
+        await form_question_response_repo.create(
             FormQuestionResponsesCreate(
-                section_response_id=section_responses[section_id],
+                section_response_id=section_response_id,
                 question_id=question_id,
                 answer=answer,
                 submitted_at=utc_now(),
@@ -253,11 +273,11 @@ def chat_events(sio: AsyncServer):
                     full_bot_response = ""
 
                     async for chunk in chatbot.chat(user_message):
-                        chunk_type = chunk["type"]
+                        chunk_flow = chunk["flow"]
                         chunk_content = chunk["content"]
                         chunk_form_id = chunk.get("form_id")
 
-                        if chunk_type == "chat":
+                        if chunk_flow == "generic":
                             if chunk_content:
                                 full_bot_response += chunk_content
                                 await sio.emit(
@@ -271,86 +291,7 @@ def chat_events(sio: AsyncServer):
                                     ).model_dump(),
                                     to=sid,
                                 )
-                        elif chunk_type == "info":
-                            full_bot_response = chunk_content
-                            await sio.emit(
-                                "chat",
-                                Chat(
-                                    type=ChatType.ENGAGEMENT,
-                                    client_id=client_id,
-                                    sender="bot",
-                                    message=chunk_content,
-                                    timestamp=utc_now().isoformat(),
-                                ).model_dump(),
-                                to=sid,
-                            )
-                        elif chunk_type == "form_start":
-                            form_id = chunk_form_id
-                            if not form_id:
-                                logger.error("form_start chunk without form_id")
-                                continue
-
-                            await set_form_id(client_id, form_id)
-                            form_repo = FormRepository()
-                            form_data = await form_repo.get(UUID(form_id))
-
-                            if form_data and form_data.data:
-                                questions = []
-                                for section in form_data.data.sections:
-                                    for q in section.questions:
-                                        questions.append(
-                                            {
-                                                "id": str(q.id),
-                                                "prompt": q.prompt,
-                                                "label": q.label,
-                                            }
-                                        )
-
-                                first_question_text = await chatbot.add_form_context(
-                                    form_id, questions
-                                )
-
-                                await push_to_response_queue(
-                                    client_id,
-                                    Chat(
-                                        type=ChatType.ONBOARDING,
-                                        client_id=client_id,
-                                        sender="bot",
-                                        message="Great! I will require some details from you.",
-                                        timestamp=utc_now().isoformat(),
-                                        form=form_id,
-                                    ).model_dump(),
-                                )
-
-                                await sio.emit(
-                                    "chat",
-                                    Chat(
-                                        type=ChatType.ENGAGEMENT,
-                                        client_id=client_id,
-                                        sender="bot",
-                                        message=first_question_text,
-                                        timestamp=utc_now().isoformat(),
-                                    ).model_dump(),
-                                    to=sid,
-                                )
-                                full_bot_response = first_question_text
-                            else:
-                                error_message = "Sorry, I couldn't find that form."
-                                await sio.emit(
-                                    "chat",
-                                    Chat(
-                                        type=ChatType.ENGAGEMENT,
-                                        client_id=client_id,
-                                        sender="bot",
-                                        message=error_message,
-                                        timestamp=utc_now().isoformat(),
-                                    ).model_dump(),
-                                    to=sid,
-                                )
-                                await delete_forms(client_id)
-                                full_bot_response = error_message
-
-                        elif chunk_type == "form":
+                        elif chunk_flow == "form":
                             full_bot_response = chunk_content
                             await sio.emit(
                                 "chat",
@@ -364,11 +305,19 @@ def chat_events(sio: AsyncServer):
                                 to=sid,
                             )
 
-                            if chunk_content == "Thank you for completing the form.":
+                            if chunk_form_id:
+                                await set_form_id(client_id, chunk_form_id)
+
+                            if (
+                                chunk_content
+                                == "Thank you for completing the form."
+                            ):
                                 form_id = chunk_form_id
                                 if form_id:
-                                    form_responses = await chatbot.cache.hash_get_all(
-                                        f"{chatbot.FORM_RESPONSES_CACHE_KEY_PREFIX}:{form_id}"
+                                    form_responses = (
+                                        await chatbot.cache.hash_get_all(
+                                            f"{chatbot.FORM_RESPONSES_CACHE_KEY_PREFIX}:{form_id}"
+                                        )
                                     )
                                     if form_responses:
                                         await _create_form_responses(
