@@ -60,7 +60,6 @@ def gateway_events(sio: AsyncServer):
                         sender="bot",
                         message="Hey there! How can I help you?",
                         timestamp=utc_now().isoformat(),
-                        form=None,
                     )
                     await sio.emit(
                         "connection",
