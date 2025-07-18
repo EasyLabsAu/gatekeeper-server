@@ -7,11 +7,10 @@ from fastapi import FastAPI, Request
 
 from src.api import setup_http_routes, setup_websocket_events
 from src.core.config import settings
-from src.core.database import check_database_connection, engine
+from src.core.database import engine, validate_database_health
 from src.core.http import HTTP_GATEWAY
 from src.core.socket import SOCKET_GATEWAY
 from src.helpers.constants import (
-    CHAT_UPDATED_EVENT,
     HTTP_API_PREFIX,
     PROVIDER_CREATED_EVENT,
     WEBSOCKET_API_PREFIX,
@@ -19,7 +18,6 @@ from src.helpers.constants import (
 from src.helpers.events import events
 from src.helpers.logger import Logger
 from src.helpers.model import APIError
-from src.workers.chat import on_chat_updated
 from src.workers.providers import on_provider_created
 
 logger = Logger(__name__)
@@ -49,7 +47,7 @@ def create_app() -> FastAPI:
             "CORS Origins: %s",
             settings.CORS_ORIGINS,
         )
-        if not await check_database_connection(engine):
+        if not await validate_database_health(engine):
             raise RuntimeError("Database connection failed after retries")
 
         logger.info("Database connection established successfully")
@@ -57,7 +55,6 @@ def create_app() -> FastAPI:
         await events.start_worker()
         logger.info("Lifespan startup: Registering event handlers")
         events.on(PROVIDER_CREATED_EVENT, on_provider_created)
-        events.on(CHAT_UPDATED_EVENT, on_chat_updated)
         yield
         logger.info("Lifespan shutdown: Stopping worker")
         await events.stop_worker()

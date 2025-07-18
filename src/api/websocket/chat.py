@@ -6,15 +6,21 @@ from uuid import UUID
 from socketio import AsyncServer
 
 from src.helpers.cache import Cache
-from src.helpers.constants import (
-    CHAT_UPDATED_EVENT,
-)
-from src.helpers.events import events
 from src.helpers.logger import Logger
 from src.helpers.model import utc_now
 from src.models.chat import Chat, ChatType
+from src.models.forms import (
+    FormQuestionResponsesCreate,
+    FormResponsesCreate,
+    FormSectionResponsesCreate,
+)
 from src.models.sessions import SessionCreate, SessionUpdate
-from src.repositories.forms import FormRepository
+from src.repositories.forms import (
+    FormQuestionResponseRepository,
+    FormRepository,
+    FormResponseRepository,
+    FormSectionResponseRepository,
+)
 from src.repositories.sessions import SessionRepository
 from src.services.chatbot import Chatbot
 
@@ -37,29 +43,16 @@ async def delete_sessions(client_id: str):
     )
 
 
-async def get_transcriptions(client_id: str) -> list[dict]:
+async def get_transcripts(client_id: str) -> list[dict]:
     try:
-        return await cache.list_get(f"transcriptions:{client_id}") or []
+        return await cache.list_get(f"transcripts:{client_id}") or []
     except (AttributeError, TypeError):
-        await cache.delete(f"transcriptions:{client_id}")
+        await cache.delete(f"transcripts:{client_id}")
         return []
 
 
-async def set_transcriptions(client_id: str, transcriptions: list[dict]):
-    key = f"transcriptions:{client_id}"
-    await cache.delete(key)
-    if transcriptions:
-        await cache.list_append(key, *transcriptions)
-
-
-async def append_transcription(client_id: str, message: dict):
-    await cache.list_append(f"transcriptions:{client_id}", message)
-
-
-async def delete_transcriptions(client_id: str):
-    await cache.delete(
-        f"transcriptions:{client_id}",
-    )
+async def append_transcript(client_id: str, message: dict):
+    await cache.list_append(f"transcripts:{client_id}", message)
 
 
 async def set_form_id(client_id: str, form_id: str):
@@ -76,31 +69,142 @@ async def delete_forms(client_id: str):
     )
 
 
-async def set_form_onboarded(client_id: str, onboarded: bool):
-    await cache.set(f"form_onboarded:{client_id}", "true" if onboarded else "false")
+async def push_to_response_queue(client_id: str, message: dict):
+    await cache.list_append(f"response_queue:{client_id}", message)
 
 
-async def get_form_onboarded(client_id: str) -> bool:
-    status = await cache.get(f"form_onboarded:{client_id}")
-    return status == "true"
+async def pop_from_response_queue(client_id: str) -> dict | None:
+    return await cache.list_pop(f"response_queue:{client_id}")
 
 
-async def delete_form_onboarded(client_id: str):
-    await cache.delete(f"form_onboarded:{client_id}")
+async def is_queue_processing(client_id: str) -> bool:
+    return await cache.get(f"response_queue_processing:{client_id}") == "true"
 
 
-async def delete_client(client_id: str):
-    client_list = await cache.list_get("clients") or []
+async def set_queue_processing(client_id: str, status: bool):
+    if status:
+        await cache.set(f"response_queue_processing:{client_id}", "true", ttl=60)
+    else:
+        await cache.delete(f"response_queue_processing:{client_id}")
 
-    for i, client in enumerate(client_list):
-        if client == client_id:
-            client_list.pop(i)
-            break
 
-    await cache.delete("clients")
+async def _process_response_queue(client_id: str, sio: AsyncServer, sid: str):
+    if await is_queue_processing(client_id):
+        return
 
-    if client_list:
-        await cache.list_append("clients", *client_list)
+    await set_queue_processing(client_id, True)
+    try:
+        while True:
+            response = await pop_from_response_queue(client_id)
+            if response:
+                await sio.emit("chat", response, room=sid)
+            else:
+                break
+    finally:
+        await set_queue_processing(client_id, False)
+
+
+async def _get_or_create_session(client_id: str, socket_session: dict) -> str | None:
+    session_id = await get_session_id(client_id)
+    session_repository = SessionRepository()
+
+    if not session_id:
+        current_transcripts = await get_transcripts(client_id)
+        session_data = SessionCreate(
+            transcript=current_transcripts,
+            meta_data={
+                "client_fingerprint": client_id,
+                "user_agent": socket_session.get("user_agent", "unknown"),
+                "client_ip": socket_session.get("client_ip", "unknown"),
+            },
+        )
+        result = await session_repository.create(session_data)
+        if result and result.data:
+            session_id = str(result.data.id)
+            await set_session_id(client_id, session_id)
+            return session_id
+        return None
+    else:
+        await session_repository.get(UUID(session_id))
+        return session_id
+
+
+async def _create_form_responses(
+    form_id_str: str, session_id_str: str, responses: dict[str, str]
+):
+    if not responses:
+        return
+
+    form_id = UUID(form_id_str)
+    session_id = UUID(session_id_str)
+
+    collected_responses_json = [
+        {"form_id": form_id_str, "question_id": q_id, "answer": answer}
+        for q_id, answer in responses.items()
+    ]
+    logger.info(
+        "Collected Form Responses: %s", json.dumps(collected_responses_json, indent=2)
+    )
+
+    form_repo = FormRepository()
+    form_response_repo = FormResponseRepository()
+    form_section_response_repo = FormSectionResponseRepository()
+    form_question_response_repo = FormQuestionResponseRepository()
+
+    form_data_response = await form_repo.get(form_id)
+    if not form_data_response or not form_data_response.data:
+        logger.error("Form not found when creating responses: %s", form_id)
+        return
+
+    form_data = form_data_response.data
+    question_to_section_map = {
+        str(q.id): s.id for s in form_data.sections for q in s.questions
+    }
+
+    form_response = await form_response_repo.create(
+        FormResponsesCreate(
+            form_id=form_id, session_id=session_id, submitted_at=utc_now()
+        )
+    )
+
+    if not form_response or not form_response.data:
+        logger.error("Failed to create form response")
+        return
+
+    form_response_id = form_response.data.id
+    section_responses_map: dict[UUID, UUID] = {}
+
+    for question_id_str, answer in responses.items():
+        question_id = UUID(question_id_str)
+        section_id = question_to_section_map.get(question_id_str)
+
+        if not section_id:
+            logger.warning("Question %s not found in form %s", question_id, form_id)
+            continue
+
+        section_response_id = section_responses_map.get(section_id)
+        if not section_response_id:
+            section_response = await form_section_response_repo.create(
+                FormSectionResponsesCreate(
+                    response_id=form_response_id, section_id=section_id
+                )
+            )
+            if not section_response or not section_response.data:
+                logger.error(
+                    "Failed to create section response for section %s", section_id
+                )
+                continue
+            section_response_id = section_response.data.id
+            section_responses_map[section_id] = section_response_id
+
+        await form_question_response_repo.create(
+            FormQuestionResponsesCreate(
+                section_response_id=section_response_id,
+                question_id=question_id,
+                answer=answer,
+                submitted_at=utc_now(),
+            )
+        )
 
 
 def chat_events(sio: AsyncServer):
@@ -118,20 +222,11 @@ def chat_events(sio: AsyncServer):
                 parsed_data = json.loads(data) if isinstance(data, str) else data
                 sender = parsed_data.get("sender")
                 user_message = parsed_data.get("message")
-                form = parsed_data.get("form", None)
-
-                if form:
-                    await set_form_id(client_id, form)
-
-                # TODO: delete when the chat is ended by user
-                # await delete_transcriptions(client_id)
-                # await delete_sessions(client_id)
-                # await delete_client(client_id)
 
                 if user_message and sender == "user":
-                    transcriptions = await get_transcriptions(client_id)
-                    if not transcriptions:
-                        await append_transcription(
+                    transcripts = await get_transcripts(client_id)
+                    if not transcripts:
+                        await push_to_response_queue(
                             client_id,
                             Chat(
                                 type=ChatType.ONBOARDING,
@@ -139,10 +234,10 @@ def chat_events(sio: AsyncServer):
                                 sender="bot",
                                 message="Hey there! How can I help you?",
                                 timestamp=utc_now().isoformat(),
-                                form=None,
                             ).model_dump(),
                         )
-                    await append_transcription(
+
+                    await append_transcript(
                         client_id,
                         Chat(
                             type=ChatType.ENGAGEMENT,
@@ -150,101 +245,118 @@ def chat_events(sio: AsyncServer):
                             sender="user",
                             message=user_message,
                             timestamp=utc_now().isoformat(),
-                            form=None,
                         ).model_dump(),
                     )
 
-                    session_id = await get_session_id(client_id)
-                    session_repository = SessionRepository()
-
+                    session_id = await _get_or_create_session(client_id, socket_session)
                     if not session_id:
-                        current_transcriptions = await get_transcriptions(client_id)
-                        session_data = SessionCreate(
-                            transcription=current_transcriptions,
-                            meta_data={
-                                "client_fingerprint": client_id,
-                                "user_agent": socket_session.get(
-                                    "user_agent", "unknown"
-                                ),
-                                "client_ip": socket_session.get("client_ip", "unknown"),
-                            },
+                        logger.error(
+                            "Failed to get or create session for client %s", client_id
                         )
-                        result = await session_repository.create(session_data)
-                        if result and result.data:
-                            session_id = result.data.id
-                        await set_session_id(client_id, str(session_id))
-                    else:
-                        await session_repository.get(UUID(session_id))
+                        await push_to_response_queue(
+                            client_id,
+                            Chat(
+                                type=ChatType.ENGAGEMENT,
+                                client_id=client_id,
+                                sender="bot",
+                                message="Sorry, I'm having trouble with our session. Please try again later.",
+                                timestamp=utc_now().isoformat(),
+                            ).model_dump(),
+                        )
+                        await _process_response_queue(client_id, sio, sid)
+                        return
 
-                    chatbot = Chatbot(session_id=str(session_id))
-                    form_id = await get_form_id(client_id)
-                    form_repository = FormRepository()
-                    bot_response = await chatbot.get_response(user_message)
-                    if form_id:
-                        form = await form_repository.get(UUID(form_id))
-                        if form and form.data:
-                            form_onboarded = await get_form_onboarded(client_id)
-                            if not form_onboarded:
-                                await set_form_onboarded(client_id, True)
+                    chatbot = Chatbot(session_id=session_id)
+                    await chatbot.initialize()
+                    full_bot_response = ""
+
+                    async for chunk in chatbot.chat(user_message):
+                        chunk_flow = chunk["flow"]
+                        chunk_content = chunk["content"]
+                        chunk_form_id = chunk.get("form_id")
+
+                        if chunk_flow == "generic":
+                            if chunk_content:
+                                full_bot_response += chunk_content
                                 await sio.emit(
                                     "chat",
                                     Chat(
-                                        type=ChatType.ONBOARDING,
+                                        type=ChatType.ENGAGEMENT,
                                         client_id=client_id,
                                         sender="bot",
-                                        message="Great! I will require some details from you.",
+                                        message=chunk_content,
                                         timestamp=utc_now().isoformat(),
-                                        form=None,
                                     ).model_dump(),
-                                    room=sid,
+                                    to=sid,
                                 )
-                            bot_response = await chatbot.get_response(
-                                user_message, form.data.model_dump()
+                        elif chunk_flow == "form":
+                            full_bot_response = chunk_content
+                            await sio.emit(
+                                "chat",
+                                Chat(
+                                    type=ChatType.ENGAGEMENT,
+                                    client_id=client_id,
+                                    sender="bot",
+                                    message=chunk_content,
+                                    timestamp=utc_now().isoformat(),
+                                ).model_dump(),
+                                to=sid,
                             )
-                        else:
-                            bot_response = "Form not found. Please try a different one."
-                            await delete_forms(client_id)
-                            await delete_form_onboarded(client_id)
 
-                    bot_message = Chat(
-                        type=ChatType.ENGAGEMENT,
-                        client_id=client_id,
-                        sender="bot",
-                        message=bot_response,
-                        timestamp=utc_now().isoformat(),
-                        form=None,
-                    )
-                    await append_transcription(client_id, bot_message.model_dump())
+                            if chunk_form_id:
+                                await set_form_id(client_id, chunk_form_id)
 
-                    current_transcriptions = await get_transcriptions(client_id)
-                    if session_id:
-                        await events.emit(
-                            CHAT_UPDATED_EVENT,
-                            session_id,
-                            SessionUpdate(
-                                transcription=current_transcriptions,
-                            ),
+                            if chunk_content == "Thank you for completing the form.":
+                                form_id = chunk_form_id
+                                if form_id:
+                                    form_responses = await chatbot.cache.hash_get_all(
+                                        f"{chatbot.FORM_RESPONSES_CACHE_KEY_PREFIX}:{form_id}"
+                                    )
+                                    if form_responses:
+                                        await _create_form_responses(
+                                            form_id,
+                                            session_id,
+                                            form_responses,
+                                        )
+                                    await chatbot.cache.delete(
+                                        f"{chatbot.FORM_RESPONSES_CACHE_KEY_PREFIX}:{form_id}"
+                                    )
+                                    await delete_forms(client_id)
+
+                                await push_to_response_queue(
+                                    client_id,
+                                    Chat(
+                                        type=ChatType.OFFBOARDING,
+                                        client_id=client_id,
+                                        sender="bot",
+                                        message="Is there anything else I can help you with?",
+                                        timestamp=utc_now().isoformat(),
+                                    ).model_dump(),
+                                )
+
+                    if full_bot_response:
+                        await append_transcript(
+                            client_id,
+                            Chat(
+                                type=ChatType.ENGAGEMENT,
+                                client_id=client_id,
+                                sender="bot",
+                                message=full_bot_response,
+                                timestamp=utc_now().isoformat(),
+                            ).model_dump(),
                         )
-                    logger.info(
-                        "Current transcription for %s: %s",
-                        client_id,
-                        current_transcriptions,
-                    )
-                    await sio.emit(
-                        "chat",
-                        bot_message.model_dump(),
-                        room=sid,
-                    )
-                else:
-                    logger.warning(
-                        "Received empty 'message' from %s. Data: %s", client_id, data
-                    )
 
-            except json.JSONDecodeError:
-                logger.error(
-                    "Failed to parse JSON from %s. Raw data: %s", client_id, data
-                )
-            except (TypeError, AttributeError) as e:
+                    session_repository = SessionRepository()
+                    current_transcripts = await get_transcripts(client_id)
+                    await session_repository.update(
+                        UUID(session_id),
+                        SessionUpdate(
+                            transcript=current_transcripts,
+                        ),
+                    )
+                    await _process_response_queue(client_id, sio, sid)
+
+            except Exception as e:
                 logger.exception(
                     "Unexpected error while handling chat from %s: %s", client_id, e
                 )

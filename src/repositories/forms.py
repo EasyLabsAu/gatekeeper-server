@@ -156,28 +156,14 @@ class FormRepository(BaseRepository):
         finally:
             await self.close_database_session()
 
-    async def delete(self, id: UUID) -> APIResponse | None:
+    async def get_all(self) -> APIResponse[list[FormRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            statement = select(Forms).where(
-                Forms.id == id,
-                (getattr(Forms, "is_deleted") == False)  # noqa: B009, E712
-                if hasattr(Forms, "is_deleted")
-                else True,
-            )
+            statement = select(Forms).where(Forms.is_deleted == False)
             result = await db.execute(statement)
-            form = result.scalar_one_or_none()
-            if not form:
-                raise APIError(404, "Form not found")
-            if hasattr(form, "soft_delete"):
-                form.soft_delete()
-            elif hasattr(form, "is_deleted"):
-                form.is_deleted = True
-            else:
-                raise APIError(400, "Soft delete not supported on Forms model")
-            db.add(form)
-            await db.commit()
-            return APIResponse(message="Form soft-deleted")
+            forms = result.scalars().unique().all()
+            data = [FormRead.model_validate(form) for form in forms]
+            return APIResponse[list[FormRead]](data=data)
         finally:
             await self.close_database_session()
 
@@ -401,15 +387,35 @@ class FormResponseRepository(BaseRepository):
     ) -> APIResponse[list[FormResponsesRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            # TODO : Add custom filters based query
-            statement = select(FormResponses)
-            statement = statement.offset(skip).limit(limit)
+            filters = []
+            if query.form_id:
+                filters.append(FormResponses.form_id == query.form_id)
+            if query.session_id:
+                filters.append(FormResponses.session_id == query.session_id)
+
+            statement = (
+                select(FormResponses)
+                .options(
+                    selectinload(
+                        getattr(FormResponses, "section_responses")
+                    ).selectinload(getattr(FormSectionResponses, "question_responses"))
+                )
+                .offset(skip)
+                .limit(limit)
+            )
+
+            if filters:
+                statement = statement.where(*filters)
+
             result = await db.execute(statement)
-            responses = result.scalars().all()
+            responses = result.scalars().unique().all()
             data = [
                 FormResponsesRead.model_validate(response) for response in responses
             ]
-            return APIResponse[list[FormResponsesRead]](data=data)
+            return APIResponse[list[FormResponsesRead]](
+                data=data,
+                meta={"skip": skip, "limit": limit, "count": len(data)},
+            )
         finally:
             await self.close_database_session()
 
@@ -477,7 +483,7 @@ class FormSectionResponseRepository(BaseRepository):
     ) -> APIResponse[FormSectionResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            section_response = FormSectionResponsesCreate(**payload.model_dump())
+            section_response = FormSectionResponses(**payload.model_dump())
             db.add(section_response)
             await db.commit()
             await db.refresh(section_response)
@@ -494,15 +500,22 @@ class FormSectionResponseRepository(BaseRepository):
     ) -> APIResponse[list[FormSectionResponsesRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            # TODO : Add custom filters based query
-            statement = select(FormSectionResponses)
-            statement = statement.offset(skip).limit(limit)
+            statement = (
+                select(FormSectionResponses)
+                .where(FormSectionResponses.response_id == query.response_id)
+                .options(selectinload(getattr(FormSectionResponses, "question_responses")))
+                .offset(skip)
+                .limit(limit)
+            )
             result = await db.execute(statement)
-            section_responses = result.scalars().all()
+            section_responses = result.scalars().unique().all()
             data = [
                 FormSectionResponsesRead.model_validate(sr) for sr in section_responses
             ]
-            return APIResponse[list[FormSectionResponsesRead]](data=data)
+            return APIResponse[list[FormSectionResponsesRead]](
+                data=data,
+                meta={"skip": skip, "limit": limit, "count": len(data)},
+            )
         finally:
             await self.close_database_session()
 
@@ -578,7 +591,7 @@ class FormQuestionResponseRepository(BaseRepository):
     ) -> APIResponse[FormQuestionResponsesRead] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            question_response = FormQuestionResponsesCreate(**payload.model_dump())
+            question_response = FormQuestionResponses(**payload.model_dump())
             db.add(question_response)
             await db.commit()
             await db.refresh(question_response)
@@ -595,8 +608,9 @@ class FormQuestionResponseRepository(BaseRepository):
     ) -> APIResponse[list[FormQuestionResponsesRead]] | None:
         db: AsyncSession = await self.get_database_session()
         try:
-            # TODO : Add custom filters based query
-            statement = select(FormQuestionResponses)
+            statement = select(FormQuestionResponses).where(
+                FormQuestionResponses.section_response_id == query.section_response_id
+            )
             statement = statement.offset(skip).limit(limit)
             result = await db.execute(statement)
             question_responses = result.scalars().all()
@@ -604,7 +618,10 @@ class FormQuestionResponseRepository(BaseRepository):
                 FormQuestionResponsesRead.model_validate(qr)
                 for qr in question_responses
             ]
-            return APIResponse[list[FormQuestionResponsesRead]](data=data)
+            return APIResponse[list[FormQuestionResponsesRead]](
+                data=data,
+                meta={"skip": skip, "limit": limit, "count": len(data)},
+            )
         finally:
             await self.close_database_session()
 

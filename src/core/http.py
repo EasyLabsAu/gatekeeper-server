@@ -1,12 +1,13 @@
 from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from src.core.config import settings
-from src.core.database import check_database_connection, engine
+from src.core.database import engine, validate_database_health
 from src.helpers.constants import CORS_CONFIGS
 from src.helpers.logger import Logger
 from src.middlewares.log import LogRequests
@@ -51,7 +52,7 @@ class HTTP_GATEWAY:
     @asynccontextmanager
     async def _default_lifespan(self, _: FastAPI) -> AsyncGenerator[None, None]:
         logger.info(f"Connecting to database at {settings.POSTGRES_URI}")
-        if not await check_database_connection(engine):
+        if not await validate_database_health(engine):
             raise RuntimeError("Database connection failed after retries")
 
         self.logger.info("Database connection established successfully")

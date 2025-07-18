@@ -1,584 +1,501 @@
 import json
-import pickle
-import random
+import os
 import re
-import subprocess
-import sys
-from collections.abc import Callable
-from datetime import datetime
-from pathlib import Path
-from typing import Any
+from collections.abc import AsyncGenerator, Sequence
+from typing import Any, TypedDict
 from uuid import UUID
 
-import aiofiles
-import nltk
-import numpy as np
-import spacy
-from annoy import AnnoyIndex
-from spacy.language import Language
-
-from src.helpers.cache import Cache, PickleSerializer
-from src.helpers.logger import Logger
-from src.models.forms import (
-    FormFieldTypes,
+from aioredis import RedisError
+from langchain.chat_models import init_chat_model
+from langchain_core.documents import Document
+from langchain_core.exceptions import LangChainException
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    messages_from_dict,
+    messages_to_dict,
 )
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_postgres import PGEngine
+from langchain_postgres.v2.async_vectorstore import AsyncPGVectorStore
+
+from src.core.config import settings
+from src.helpers.cache import Cache
+from src.helpers.logger import Logger
+from src.helpers.model import APIError
+from src.models.contexts import ContextCategory, Contexts
+from src.models.forms import FormQuery, FormQuestions, Forms, FormSections
+from src.repositories.contexts import ContextRepository
+from src.repositories.forms import FormRepository
 
 logger = Logger(__name__)
 
-DATA_DIR = Path(__file__).parent.parent / "data"
-INTENTS_FILE = DATA_DIR / "intents.json"
-EMBEDDINGS_FILE = DATA_DIR / "intents_embeddings.pkl"
-ANNOY_INDEX_FILE = DATA_DIR / "intents_annoy_index.ann"
+
+class ChatbotError(Exception):
+    """Base exception for chatbot errors"""
+
+    pass
 
 
-def initialize_nltk_data():
-    try:
-        nltk.data.find("tokenizers/punkt")
-    except LookupError:
-        nltk.download("punkt", quiet=True)
-    try:
-        nltk.data.find("corpora/stopwords")
-    except LookupError:
-        nltk.download("stopwords", quiet=True)
-    try:
-        nltk.data.find("corpora/wordnet")
-    except LookupError:
-        nltk.download("wordnet", quiet=True)
-    try:
-        nltk.data.find("taggers/averaged_perceptron_tagger")
-    except LookupError:
-        nltk.download("averaged_perceptron_tagger", quiet=True)
+class FormNotFoundError(ChatbotError):
+    """Raised when a form is not found"""
+
+    pass
 
 
-def is_valid_name(name: str) -> bool:
-    return len(name.split()) >= 2
+class VectorSearchError(ChatbotError):
+    """Raised when vector search fails"""
+
+    pass
 
 
-def is_valid_email(email: str) -> bool:
-    return bool(re.match(r"[^@]+@[^@]+\.[^@]+", email))
+class FormQuestion(TypedDict):
+    id: str
+    prompt: str | None
+    label: str
 
 
-def extract_name(text: str, nlp_model: Language) -> str:
-    doc = nlp_model(text)
-    for ent in doc.ents:
-        if ent.label_ == "PERSON":
-            return ent.text
-    # Fallback for simple names
-    if len(text.split()) >= 2:
-        return text
-    return ""
-
-
-def extract_email(text: str) -> str:
-    match = re.search(r"[^@]+@[^@]+\.[^@]+", text)
-    return match.group(0) if match else ""
-
-
-def extract_entities(text: str, nlp_model: Language) -> list[tuple[str, str]]:
-    doc = nlp_model(text)
-    return [(ent.text, ent.label_) for ent in doc.ents]
-
-
-def load_spacy_model(model_name: str) -> Language | None:
-    try:
-        nlp_model = spacy.load(model_name)
-        logger.info("spaCy model loaded successfully.")
-    except OSError:
-        logger.info("spaCy model '%s' not found. Attempting to download...", model_name)
-        try:
-            subprocess.check_call(
-                [sys.executable, "-m", "spacy", "download", model_name]
-            )
-            nlp_model = spacy.load(model_name)
-            logger.info("spaCy model downloaded and loaded successfully.")
-        except (subprocess.CalledProcessError, OSError) as e:
-            logger.error("Failed to download or load spaCy model: %s", e)
-            nlp_model = None
-    return nlp_model
-
-
-EXIT_KEYWORDS = ["exit", "cancel", "stop", "nevermind", "bye"]
-
-
-async def precompute_embeddings(nlp_model: Language):
-    logger.info("Loading intents from %s...", INTENTS_FILE)
-
-    async with aiofiles.open(INTENTS_FILE, encoding="utf-8") as f:
-        content = await f.read()
-        intents_data = json.loads(content)
-
-    patterns = []
-    intent_labels = []
-    for intent_name, data in intents_data.items():
-        for pattern in data["patterns"]:
-            patterns.append(pattern)
-            intent_labels.append(intent_name)
-
-    if not patterns:
-        logger.info(
-            "No patterns found in intents.json. Skipping embedding pre-computation."
-        )
-        return
-
-    logger.info("Generating embeddings for %d patterns...", len(patterns))
-    pattern_embeddings = [nlp_model(text).vector for text in patterns]
-
-    if not pattern_embeddings:
-        logger.info("No valid embeddings generated. Skipping Annoy index build.")
-        return
-
-    embedding_dim = len(pattern_embeddings[0])
-    annoy_index = AnnoyIndex(embedding_dim, "angular")
-    for i, vec in enumerate(pattern_embeddings):
-        annoy_index.add_item(i, vec)
-
-    logger.info("Building Annoy index...")
-    annoy_index.build(10)
-
-    annoy_index.save(str(ANNOY_INDEX_FILE))
-    logger.info("Annoy index saved to %s", ANNOY_INDEX_FILE)
-
-    intent_mapping = {i: (intent_labels[i], patterns[i]) for i in range(len(patterns))}
-
-    async with aiofiles.open(EMBEDDINGS_FILE, mode="wb") as f:
-        await f.write(pickle.dumps(intent_mapping))
-
-    logger.info("Intent mapping saved to %s", EMBEDDINGS_FILE)
-    logger.info("Pre-computation complete.")
-
-
-class Question:
-    def __init__(
-        self,
-        text: str,
-        field_type: str | None,
-        required: bool | None,
-        options: list[str] | None,
-        question_id: UUID | None,
-        section_id: UUID | None,
-        key: str | None = None,
-        validation: Callable[[str], bool] | None = None,
-        extractor: Callable[[str], Any] | None = None,
-        success_message: str | None = None,
-    ):
-        self.text = text
-        self.field_type = field_type
-        self.required = required
-        self.options = options
-        self.question_id = question_id
-        self.section_id = section_id
-        self.key = key
-        self.validation = validation
-        self.extractor = extractor
-        self.success_message = success_message
+class ChatbotResponse(TypedDict):
+    flow: str
+    content: str
+    form_id: str | None
 
 
 class Chatbot:
+    HISTORY_CACHE_KEY = "conversation_history"
+    FORM_CONTEXT_CACHE_KEY = "form_context"
+    FORM_RESPONSES_CACHE_KEY_PREFIX = "form_responses"
+    SYSTEM_PROMPT_CACHE_KEY = "system_prompt"
+    FORM_INDEX_CACHE_KEY = "form_index"
+
     def __init__(
         self,
         session_id: str,
-        model_name="en_core_web_lg",
-        min_overall_confidence=0.7,
+        llm_provider: str = settings.LLM_PROVIDER,
+        model_name: str = settings.LLM_MODEL,
+        llm_key: str = settings.LLM_KEY,
+        embedding_model: str = settings.LLM_EMBEDDING_MODEL,
     ):
+        if not session_id:
+            raise ValueError("session_id is required for Chatbot")
+
+        if llm_provider == "google_genai":
+            os.environ["GOOGLE_API_KEY"] = llm_key
+        else:
+            raise ValueError(f"Unsupported LLM provider: {llm_provider}")
+
+        self.model = init_chat_model(
+            model_name,
+            model_provider=llm_provider,
+        )
         self.session_id = session_id
-        self.min_overall_confidence = min_overall_confidence
-        self.context: dict[str, Any] = {}
+        self.cache = Cache(key_prefix=f"chatbot:{self.session_id}")
+        self.embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model)
+        self.engine: PGEngine | None = None
+        self.vector_store: AsyncPGVectorStore | None = None
+        self.form_vector_store: AsyncPGVectorStore | None = None
+        self.context_retriever: Any = None
+        self.context_repo = ContextRepository()
+        self.form_repo = FormRepository()
+        self.system_prompt: str | None = None
+        self.rag_chain: Any = None
 
-        self.cache = Cache(
-            key_prefix="chatbot_context",
-            serializer=PickleSerializer(),
-            default_ttl=86400,
+    async def initialize(self):
+        self.engine = PGEngine.from_connection_string(url=str(settings.POSTGRES_URI))
+        self.vector_store = await AsyncPGVectorStore.create(
+            engine=self.engine,
+            table_name=str(Contexts.__tablename__),
+            embedding_service=self.embeddings,
+            id_column="id",
+            content_column="data",
         )
-
-        try:
-            self.nlp = spacy.load(model_name)
-        except OSError as exc:
-            raise RuntimeError(
-                f"SpaCy model '{model_name}' not found. Please ensure it's downloaded."
-            ) from exc
-
-        if self.nlp.vocab.vectors.shape[0] > 0:
-            self.embedding_dim = self.nlp.vocab.vectors.shape[1]
-        else:
-            self.embedding_dim = 300
-            logger.warning(
-                "Warning: SpaCy model '%s' has no loaded vectors. Using default embedding_dim=%d",
-                model_name,
-                self.embedding_dim,
-            )
-
-        self.intents_data = {}
-        self.annoy_index = None
-        self.intent_mapping = {}
-        self._assets_loaded = False
-
-    async def _load_intent_assets(self):
-        if self._assets_loaded:
-            return
-
-        if not ANNOY_INDEX_FILE.exists() or not EMBEDDINGS_FILE.exists():
-            logger.info(
-                "Pre-computed embeddings or Annoy index not found. Running pre-computation..."
-            )
-            initialize_nltk_data()
-            await precompute_embeddings(self.nlp)
-
-        try:
-            self.annoy_index = AnnoyIndex(self.embedding_dim, "angular")
-            self.annoy_index.load(str(ANNOY_INDEX_FILE))
-        except Exception as e:
-            logger.error("Failed to load Annoy index: %s", e)
-            return
-
-        try:
-            async with aiofiles.open(EMBEDDINGS_FILE, mode="rb") as f:
-                data = await f.read()
-                self.intent_mapping = pickle.loads(data)
-        except Exception as e:
-            logger.error("Failed to load intent embeddings: %s", e)
-            self.annoy_index = None  # Invalidate if related data fails to load
-            return
-
-        try:
-            async with aiofiles.open(INTENTS_FILE, encoding="utf-8") as f:
-                content = await f.read()
-                self.intents_data = json.loads(content)
-        except Exception as e:
-            logger.error("Failed to load intents data: %s", e)
-            self.annoy_index = None  # Invalidate if related data fails to load
-            self.intent_mapping = {}
-            return
-
-        self._assets_loaded = True
-
-    async def load_context(self):
-        context = await self.cache.get(self.session_id)
-        self.context = context if isinstance(context, dict) else {}
-
-    async def save_context(self):
-        await self.cache.set(self.session_id, self.context)
-
-    @property
-    def last_intent(self) -> str | None:
-        return self.context.get("last_intent")
-
-    @last_intent.setter
-    def last_intent(self, intent: str | None):
-        self.context["last_intent"] = intent
-
-    def _recognize_intent(self, text: str, top_n=5) -> tuple[str, float, list]:
-        if not text.strip():
-            return "invalid", 0.0, []
-
-        if not self.annoy_index:
-            logger.warning("Annoy index not loaded. Cannot recognize intent.")
-            return "invalid", 0.0, []
-
-        text_embedding = self.nlp(text).vector
-        indices, _ = self.annoy_index.get_nns_by_vector(
-            text_embedding, top_n, include_distances=True
+        self.form_vector_store = await AsyncPGVectorStore.create(
+            engine=self.engine,
+            table_name=str(Forms.__tablename__),
+            embedding_service=self.embeddings,
+            id_column="id",
+            content_column="name",
+            metadata_columns=["id", "description"],  # Ensure 'id' is in metadata
         )
+        self.context_retriever = self.vector_store.as_retriever()
+        self.rag_chain = self._create_rag_chain()
+        await self._create_form_index_cache()
 
-        best_intent = "invalid"
-        best_score = 0.0
-        matched_patterns = []
+    async def clear_session_cache(self):
+        """Clears all cache entries associated with the current session."""
+        logger.info("Clearing cache for session_id: %s", self.session_id)
+        try:
+            await self.cache.delete(self.FORM_CONTEXT_CACHE_KEY)
+            await self.cache.delete(self.HISTORY_CACHE_KEY)
+            # Note: This does not clear form responses, which are hashed by form_id.
+            # For the test script, this is sufficient as it prevents stale form contexts.
+            logger.info("Cache cleared for session_id: %s", self.session_id)
+        except Exception as e:
+            logger.error("Error clearing cache for session %s: %s", self.session_id, e)
 
-        for idx in indices:
-            intent_label, original_pattern = self.intent_mapping[idx]
-            original_pattern_embedding = self.nlp(original_pattern).vector
-
-            text_embedding_np = np.asarray(text_embedding)
-            original_pattern_embedding_np = np.asarray(original_pattern_embedding)
-
-            norm_text = np.linalg.norm(text_embedding_np)
-            norm_pattern = np.linalg.norm(original_pattern_embedding_np)
-
-            score = (
-                np.dot(text_embedding_np, original_pattern_embedding_np)
-                / (norm_text * norm_pattern)
-                if norm_text > 0 and norm_pattern > 0
-                else 0.0
-            )
-
-            if score > best_score:
-                best_score = score
-                best_intent = intent_label
-
-            if score >= self.min_overall_confidence:
-                matched_patterns.append(
+    async def _create_form_index_cache(self):
+        """Fetches all forms and caches their essential details."""
+        try:
+            forms_response = await self.form_repo.find(query=FormQuery(), limit=1000)
+            if forms_response and forms_response.data:
+                form_index = [
                     {
-                        "intent": intent_label,
-                        "pattern": original_pattern,
-                        "score": score,
+                        "id": str(form.id),
+                        "name": form.name,
+                        "description": form.description or "",
                     }
+                    for form in forms_response.data
+                    if form and form.name
+                ]
+                if form_index:
+                    await self.cache.set(
+                        self.FORM_INDEX_CACHE_KEY, form_index, ttl=3600
+                    )
+                    logger.info(f"Successfully cached {len(form_index)} forms.")
+                else:
+                    logger.warning("No valid forms found to create index cache.")
+        except Exception as e:
+            logger.error(f"Failed to create form index cache: {e}")
+
+    async def _initialize_system_prompt(self):
+        """Initialize system prompt with caching"""
+        if self.system_prompt is not None:
+            return
+
+        try:
+            cached_prompt = await self.cache.get(self.SYSTEM_PROMPT_CACHE_KEY)
+            if cached_prompt:
+                self.system_prompt = cached_prompt
+                return
+
+            contexts = await self.context_repo.find(query=None)
+
+            if not contexts or not contexts.data:
+                self.system_prompt = "You are a helpful assistant."
+            else:
+                self.system_prompt = self._build_system_prompt(contexts.data)
+
+            await self.cache.set(
+                self.SYSTEM_PROMPT_CACHE_KEY, self.system_prompt, ttl=3600
+            )
+
+        except Exception as e:
+            logger.error(f"Error initializing system prompt: {e}")
+            self.system_prompt = "You are a helpful assistant."
+
+    def _build_system_prompt(self, contexts: list) -> str:
+        """Build system prompt from contexts"""
+        info_contexts = [
+            c.data for c in contexts if c.category == ContextCategory.INFORMATION
+        ]
+        rule_contexts = [c.data for c in contexts if c.category == ContextCategory.RULE]
+        param_contexts = [
+            c.data for c in contexts if c.category == ContextCategory.PARAMETER
+        ]
+
+        prompt_parts = ["You are an AI assistant with the following characteristics:"]
+
+        if param_contexts:
+            prompt_parts.append("\n--- PARAMETERS ---")
+            prompt_parts.append(
+                "You must operate within these parameters at all times:"
+            )
+            prompt_parts.append(json.dumps(param_contexts, indent=2))
+
+        if rule_contexts:
+            prompt_parts.append("\n--- RULES ---")
+            prompt_parts.append("You must strictly adhere to the following rules:")
+            prompt_parts.append(json.dumps(rule_contexts, indent=2))
+
+        if info_contexts:
+            prompt_parts.append("\n--- BACKGROUND INFORMATION ---")
+            prompt_parts.append(
+                "This is general information you can use to answer questions:"
+            )
+            prompt_parts.append(json.dumps(info_contexts, indent=2))
+
+        return "\n".join(prompt_parts)
+
+    def _create_rag_chain(self):
+        def format_docs(docs: list[Document]) -> str:
+            formatted_docs = []
+            for doc in docs:
+                metadata = doc.metadata
+                content = (
+                    f"Source Name: {metadata.get('name', 'N/A')}\n"
+                    f"Category: {metadata.get('category', 'N/A')}\n"
+                    f"Data: {json.dumps(metadata.get('data', {}))}"
                 )
+                formatted_docs.append(content)
+            return "\n\n---\n\n".join(formatted_docs)
 
-        if best_score < self.min_overall_confidence:
-            return "invalid", 0.0, []
+        template = """{system_prompt}
+                Use the following pieces of retrieved context to answer the user's question.
+                If you don't know the answer, just say that you don't know.
+                Keep the answer concise and helpful.
 
-        return best_intent, best_score, matched_patterns
+                Context:
+                {context}
 
-    def _get_responses(self, intent_name: str) -> list[str]:
-        if intent_name not in self.intents_data:
-            return ["I'm sorry, I don't have a response for that."]
-        responses = self.intents_data[intent_name]["responses"]
+                Question: {question}
+
+                Answer:"""
+        prompt = ChatPromptTemplate.from_template(template)
+
         return (
-            responses
-            if isinstance(responses, list)
-            else ["I'm sorry, I need more information."]
+            {
+                "context": self.context_retriever | format_docs,
+                "question": RunnablePassthrough(),
+                "system_prompt": lambda _: self.system_prompt,
+            }
+            | prompt
+            | self.model
+            | StrOutputParser()
         )
 
-    def _is_flow_active(self) -> bool:
-        flow = self.context.get("conversation_flow")
-        return bool(flow and flow.get("is_active", False))
-
-    def _deactivate_flow(self):
-        if "conversation_flow" in self.context:
-            self.context["conversation_flow"]["is_active"] = False
-
-    def _get_current_question(self) -> Question | None:
-        if not self._is_flow_active():
-            return None
-        flow = self.context["conversation_flow"]
-        questions = flow.get("questions", [])
-        index = flow.get("current_question_index", 0)
-        if 0 <= index < len(questions):
-            q_data = questions[index]
-            # Ensure question_id and section_id are UUIDs
-            q_data["question_id"] = (
-                UUID(q_data["question_id"])
-                if isinstance(q_data["question_id"], str)
-                else q_data["question_id"]
-            )
-            q_data["section_id"] = (
-                UUID(q_data["section_id"])
-                if isinstance(q_data["section_id"], str)
-                else q_data["section_id"]
-            )
-            return Question(**q_data)
-        return None
-
-    async def _start_form_conversation(self, form: dict) -> str | None:
-        if not form:
-            return "I couldn't find that form."
-
-        questions_data = [
-            question
-            for section in sorted(
-                form.get("sections", []),
-                key=lambda s: s.get("order", 0),
-            )
-            for question in sorted(
-                section.get("questions", []),
-                key=lambda q: q.get("order", 0),
-            )
-        ]
-
-        if not questions_data:
-            return "This form has no questions defined."
-
-        conversation_questions = [
-            {
-                "text": q.get("prompt") or q.get("label"),
-                "field_type": q.get("field_type"),
-                "required": q.get("required"),
-                "options": q.get("options"),
-                "question_id": str(q.get("id")),
-                "section_id": str(q.get("section_id")),
-            }
-            for q in questions_data
-        ]
-
-        completion_message = f"Thank you for completing the '{form.get('name')}' form!"
-
-        self.context["conversation_flow"] = {
-            "questions": conversation_questions,
-            "completion_message": completion_message,
-            "current_question_index": 0,
-            "is_active": True,
-            "current_question_invalid_attempts": 0,
-        }
-        self.context["current_form_id"] = str(form.get("id"))
-        self.context["form_responses_id"] = None
-
-        current_question = self._get_current_question()
-        return current_question.text if current_question else completion_message
-
-    async def _process_form_answer(self, user_input: str) -> str:
-        current_question = self._get_current_question()
-        if not current_question:
-            self._deactivate_flow()
-            return "It seems there was an issue with the form. Let's start over."
-        validation_error = self._validate_answer(user_input, current_question)
-
-        if validation_error:
-            self.context["conversation_flow"]["current_question_invalid_attempts"] += 1
-            if (
-                self.context["conversation_flow"]["current_question_invalid_attempts"]
-                >= 3
-            ):
-                self._deactivate_flow()
-                self.context["conversation_flow"][
-                    "current_question_invalid_attempts"
-                ] = 0
-                return "It seems you're having trouble. Let's try something else. What would you like to do?"
-
-            if (
-                self.context["conversation_flow"]["current_question_invalid_attempts"]
-                == 1
-            ):
-                return current_question.text
-            else:
-                return f"{validation_error}\n{current_question.text}"
-        else:
-            self.context["conversation_flow"]["current_question_invalid_attempts"] = 0
-            await self._save_form_response(user_input, current_question)
-
-            flow = self.context["conversation_flow"]
-            flow["current_question_index"] += 1
-            self.context["conversation_flow"]["current_question_invalid_attempts"] = 0
-
-            if flow["current_question_index"] >= len(flow["questions"]):
-                self._deactivate_flow()
-                await self._finalize_form_submission()
-                return flow["completion_message"]
-
-            next_question = self._get_current_question()
-            return next_question.text if next_question else "Something went wrong."
-
-    async def _save_form_response(self, answer: str, question: Question):
-        form_responses_id_str = self.context.get("form_responses_id")
-        current_form_id_str = self.context.get("current_form_id")
-
-        if not form_responses_id_str:
-            new_form_response_id = str(UUID(int=random.randint(0, 2**32 - 1)))
-            self.context["form_responses_id"] = new_form_response_id
-            form_responses_id = new_form_response_id
-            logger.info("--- New Form Response ---")
-            logger.info(f"  Form Response ID: {form_responses_id}")
-            logger.info(f"  Form ID: {current_form_id_str}")
-            logger.info(f"  Session ID: {self.session_id}")
-        else:
-            form_responses_id = form_responses_id_str
-
-        if "section_responses" not in self.context:
-            self.context["section_responses"] = {}
-
-        section_id_str = str(question.section_id)
-        if section_id_str not in self.context["section_responses"]:
-            new_section_response_id = str(UUID(int=random.randint(0, 2**32 - 1)))
-            self.context["section_responses"][section_id_str] = new_section_response_id
-            logger.info("--- New Section Response ---")
-            logger.info(f"  Section Response ID: {new_section_response_id}")
-            logger.info(f"  Form Response ID: {form_responses_id}")
-            logger.info(f"  Section ID: {section_id_str}")
-
-        section_response_id = self.context["section_responses"][section_id_str]
-
-        question_response = {
-            "section_response_id": section_response_id,
-            "question_id": str(question.question_id),
-            "answer": answer,
-            "submitted_at": datetime.now().isoformat(),
-        }
-        logger.info("--- New Question Response ---")
-        logger.info(json.dumps(question_response, indent=2))
-
-    async def _finalize_form_submission(self):
-        form_responses_id_str = self.context.get("form_responses_id")
-        if form_responses_id_str:
-            logger.info("--- Form Submission Finalized ---")
-            logger.info(f"  Form Response ID: {form_responses_id_str}")
-            logger.info(f"  Submitted At: {datetime.now().isoformat()}")
-
-        self.context["current_form_id"] = None
-        self.context["form_responses_id"] = None
-        if "section_responses" in self.context:
-            del self.context["section_responses"]
-
-    def _validate_answer(self, answer: str, question: Question) -> str | None:
-        if question.required and not answer.strip():
-            return "This question is required."
-        if not answer.strip():
-            return None
-
-        field_type = question.field_type
-        if field_type == FormFieldTypes.NUMBER.value:
-            try:
-                float(answer)
-            except ValueError:
-                return "Please enter a valid number."
-        elif field_type == FormFieldTypes.BOOLEAN.value:
-            if answer.lower() not in ["true", "false", "yes", "no"]:
-                return "Please answer with 'true' or 'false' (or 'yes'/'no')."
-        elif field_type in [
-            FormFieldTypes.SINGLE_CHOICE.value,
-            FormFieldTypes.MULTIPLE_CHOICE.value,
-        ]:
-            options = [opt.lower() for opt in (question.options or [])]
-            if field_type == FormFieldTypes.SINGLE_CHOICE.value:
-                if answer.lower() not in options:
-                    return f"Please choose one of the following options: {', '.join(question.options or [])}"
-            else:
-                chosen_options = [opt.strip().lower() for opt in answer.split(",")]
-                if any(opt not in options for opt in chosen_options):
-                    return f"One or more of your choices are not valid. Please choose from: {', '.join(question.options or [])}"
-        elif field_type == FormFieldTypes.DATETIME.value:
-            try:
-                datetime.fromisoformat(answer)
-            except ValueError:
-                return "Please enter a valid date and time in ISO format (YYYY-MM-DDTHH:MM:SS)."
-        return None
-
-    async def get_response(self, user_input: str, form: dict | None = None) -> str:
-        await self.load_context()
-        await self._load_intent_assets()
-        response = ""
+    async def _get_conversation_history(self) -> list[BaseMessage]:
         try:
-            if not isinstance(user_input, str) or not user_input.strip():
-                return random.choice(self._get_responses("invalid"))
+            history_dicts = await self.cache.get(self.HISTORY_CACHE_KEY)
+            if history_dicts:
+                return messages_from_dict(history_dicts)
+        except RedisError as e:
+            await self._handle_cache_error("get_conversation_history", e)
+        return []
 
-            if any(keyword in user_input.lower() for keyword in EXIT_KEYWORDS):
-                if self._is_flow_active():
-                    self._deactivate_flow()
-                    self.last_intent = "invalid"
-                    return "Okay, cancelling that. What would you like to do?"
+    async def _save_conversation_history(self, history: Sequence[BaseMessage]):
+        try:
+            history_dicts = messages_to_dict(history)
+            await self.cache.set(self.HISTORY_CACHE_KEY, history_dicts)
+        except RedisError as e:
+            await self._handle_cache_error("save_conversation_history", e)
 
-            if self._is_flow_active():
-                if self.context.get("current_form_id"):
-                    response = await self._process_form_answer(user_input)
-                else:
-                    self._deactivate_flow()
-                    response = "Flow interrupted. What would you like to do?"
-                return response
+    async def add_form_context(self, form_id: str):
+        """Initialize form context by fetching form data from database"""
+        try:
+            form_questions = await self._get_form_questions_ordered(form_id)
 
-            if form:
-                response = await self._start_form_conversation(form)
-                self.last_intent = "form_started"
-                return response or "Something went wrong starting the form."
+            if not form_questions:
+                logger.error(f"No questions found for form {form_id}")
+                raise FormNotFoundError(f"No questions found for form {form_id}")
 
-            intent, _, _ = self._recognize_intent(user_input.lower())
-            logger.info("Final intent recognized: %s", intent)
-            self.last_intent = intent
+            form_context = {
+                "form_id": form_id,
+                "questions": form_questions,
+                "current_question_index": 0,
+            }
 
-            if intent == "help":
-                capabilities = [
-                    key.replace("_", " ")
-                    for key, data in self.intents_data.items()
-                    if key not in ["invalid", "affirmative", "help"]
-                    and data.get("patterns")
+            await self.cache.set(self.FORM_CONTEXT_CACHE_KEY, form_context)
+
+            first_question = form_context["questions"][0]
+            return first_question.get("prompt") or first_question.get("label")
+
+        except Exception as e:
+            logger.error(f"Error adding form context: {e}")
+            return "Sorry, I'm having trouble starting the form. Please try again later."
+
+    async def _handle_form_response(
+        self, user_input: str, form_context: dict[str, Any]
+    ) -> str:
+        form_id = form_context["form_id"]
+        current_question_index = form_context["current_question_index"]
+        current_question = form_context["questions"][current_question_index]
+
+        try:
+            await self.cache.hash_set(
+                f"{self.FORM_RESPONSES_CACHE_KEY_PREFIX}:{form_id}",
+                str(current_question["id"]),
+                user_input,
+            )
+        except RedisError as e:
+            logger.error("Error saving form response: %s", e)
+            return "Sorry, I'm having trouble saving your response. Please try again."
+
+        form_context["current_question_index"] += 1
+
+        if form_context["current_question_index"] < len(form_context["questions"]):
+            try:
+                await self.cache.set(self.FORM_CONTEXT_CACHE_KEY, form_context)
+                next_question = form_context["questions"][
+                    form_context["current_question_index"]
                 ]
-                response = (
-                    f"I can help you with: {', '.join(capabilities)}. What would you like assistance with?"
-                    if capabilities
-                    else "I'm a simple chatbot right now, but I can help with simple questions."
+                return next_question.get("prompt") or next_question.get("label")
+            except RedisError as e:
+                logger.error("Error advancing to next question: %s", e)
+                return "Sorry, I'm having trouble with the form. Please try again."
+        else:
+            try:
+                await self.cache.delete(self.FORM_CONTEXT_CACHE_KEY)
+                return "Thank you for completing the form."
+            except RedisError as e:
+                logger.error("Error completing form: %s", e)
+                return "Thank you for completing the form."
+
+    async def chat(self, user_input: str) -> AsyncGenerator[ChatbotResponse, None]:
+        """Handles the chat flow, including form detection and RAG."""
+        try:
+            # 1. Check if currently in a form-filling flow
+            form_context = await self.cache.get(self.FORM_CONTEXT_CACHE_KEY)
+            if form_context:
+                response_content = await self._handle_form_response(
+                    user_input, form_context
                 )
-            elif intent and intent != "invalid":
-                response = random.choice(self._get_responses(intent))
-            else:
-                response = random.choice(self._get_responses("invalid"))
+                yield {
+                    "flow": "form",
+                    "content": response_content,
+                    "form_id": form_context.get("form_id"),
+                }
+                return
 
-            return response
+            # 2. Detect if the user's intent is to start a form
+            form_id_str = await self._detect_form_intent(user_input)
+            if form_id_str:
+                yield {
+                    "flow": "form",
+                    "content": "I can help with that. To get started, I just need a few details.",
+                    "form_id": form_id_str,
+                }
+                first_question = await self.add_form_context(form_id_str)
+                yield {
+                    "flow": "form",
+                    "content": first_question,
+                    "form_id": form_id_str,
+                }
+                return
 
-        finally:
-            await self.save_context()
+            # 3. Fallback to general RAG-based chat
+            await self._initialize_system_prompt()
+            async for chunk in self._generate_rag_response(user_input):
+                yield chunk
+
+        except Exception as e:
+            logger.error(f"Error in chat: {e}")
+            yield {
+                "flow": "generic",
+                "content": "Sorry, I'm having trouble responding right now. Please try again later.",
+                "form_id": None,
+            }
+
+    async def _generate_rag_response(
+        self, user_input: str
+    ) -> AsyncGenerator[ChatbotResponse, None]:
+        try:
+            stream_response = self.rag_chain.astream(user_input)
+            full_response = ""
+            async for chunk in stream_response:
+                full_response += chunk
+                yield {"flow": "generic", "content": chunk, "form_id": None}
+
+            conversation_history = await self._get_conversation_history()
+            conversation_history.append(HumanMessage(content=user_input))
+            conversation_history.append(AIMessage(content=full_response))
+            await self._save_conversation_history(conversation_history)
+        except LangChainException as e:
+            logger.error("Error getting chat response/stream: %s", e)
+            yield {
+                "flow": "generic",
+                "content": "Sorry, I'm having trouble responding right now. Please try again later.",
+                "form_id": None,
+            }
+
+    async def _detect_form_intent(self, user_input: str) -> str | None:
+        """Detects if the user's input matches a form's intent."""
+        # Guard against very short, generic inputs
+        if len(user_input.split()) < 3:
+            return None
+
+        # 1. Keyword search on form names (high confidence)
+        try:
+            form_index = await self.cache.get(self.FORM_INDEX_CACHE_KEY)
+            if form_index:
+                stop_words = {
+                    "a",
+                    "an",
+                    "the",
+                    "is",
+                    "in",
+                    "it",
+                    "of",
+                    "for",
+                    "i",
+                    "want",
+                    "to",
+                    "get",
+                }
+                user_input_keywords = set(user_input.lower().split()) - stop_words
+
+                for form in form_index:
+                    form_name_keywords = set(form["name"].lower().split())
+                    if form_name_keywords & user_input_keywords:
+                        logger.info(f"Found keyword match for form '{{form['name']}}'.")
+                        return form["id"]
+        except Exception as e:
+            logger.warning(f"Could not use form index cache for keyword search: {e}")
+
+        # 2. Vector search on form names and descriptions (medium confidence)
+        try:
+            if not self.form_vector_store:
+                raise VectorSearchError("Form vector store is not initialized.")
+
+            results = await self.form_vector_store.asimilarity_search_with_score(
+                user_input, k=1
+            )
+
+            if results:
+                doc, score = results[0]
+                max_distance = 0.5  # Stricter threshold
+                if score <= max_distance:
+                    form_id = str(doc.metadata.get("id"))
+                    if form_id and form_id.lower() != "none":
+                        logger.info(
+                            f"Found semantic match for form '{{doc.page_content}}' with score {score}."
+                        )
+                        return form_id
+
+        except Exception as e:
+            logger.error(f"Error during vector search for form intent: {e}")
+
+        return None
+
+    async def _get_form_questions_ordered(self, form_id: str) -> list[FormQuestion]:
+        """Get form questions ordered by section and question order"""
+        try:
+            form_response = await self.form_repo.get(UUID(form_id))
+            if not form_response or not form_response.data:
+                logger.error(f"Form with id {form_id} not found via repository.")
+                return []
+
+            form = form_response.data
+
+            all_questions = []
+            sorted_sections = sorted(form.sections, key=lambda s: s.order)
+
+            for section in sorted_sections:
+                sorted_questions = sorted(section.questions, key=lambda q: q.order)
+                for q in sorted_questions:
+                    all_questions.append(
+                        {
+                            "id": str(q.id),
+                            "label": q.label,
+                            "prompt": q.prompt,
+                        }
+                    )
+            return all_questions
+        except APIError as e:
+            logger.error(f"APIError fetching questions for form {form_id}: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching questions for form {form_id}: {e}")
+            return []
+
+    async def _handle_cache_error(self, operation: str, error: Exception):
+        """Handle cache-related errors gracefully"""
+        logger.error(f"Cache error during {operation}: {error}")
+
+    async def _handle_vector_search_error(self, error: Exception):
+        """Handle vector search errors"""
+        logger.error(f"Vector search error: {error}")
+        raise VectorSearchError("Failed to search for relevant items.") from error

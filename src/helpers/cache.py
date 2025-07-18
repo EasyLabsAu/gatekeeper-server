@@ -131,6 +131,13 @@ class Cache:
         redis_key = self._make_key(key)
         return await self.redis.llen(redis_key)
 
+    async def list_pop(self, key: str) -> Any:
+        """Pop a value from the left of a list"""
+        await self.connect()
+        redis_key = self._make_key(key)
+        item = await self.redis.lpop(redis_key)
+        return self.serializer.deserialize(item) if item else None
+
     async def hash_set(self, key: str, field: str, value: Any) -> int:
         """Set hash field"""
         await self.connect()
