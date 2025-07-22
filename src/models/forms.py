@@ -16,16 +16,6 @@ if TYPE_CHECKING:
     from src.models.sessions import Sessions
 
 
-# Enum to define different types of form fields that a user can interact with
-class FormFieldTypes(str, Enum):
-    TEXT = "text"
-    NUMBER = "number"
-    BOOLEAN = "boolean"
-    DATETIME = "datetime"
-    SINGLE_CHOICE = "single_choice"
-    MULTIPLE_CHOICE = "multiple_choice"
-
-
 # Main form container model
 class Forms(BaseModel, table=True):
     name: str  # Title or name of the form
@@ -45,7 +35,6 @@ class FormCreate(SQLModel):
     name: str
     description: str | None = None
     type: str | None = None
-    chat_meta_data: dict[str, Any] | None = None
     created_by: UUID
 
 
@@ -56,7 +45,6 @@ class FormRead(SQLModel):
     type: str | None = None
     created_by: UUID
     meta_data: dict[str, Any] | None = None
-    chat_meta_data: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime | None
     sections: list["FormSectionsRead"] = []
@@ -68,7 +56,6 @@ class FormUpdate(SQLModel):
     type: str | None = None
     created_by: UUID | None = None
     meta_data: dict[str, Any] | None = None
-    chat_meta_data: dict[str, Any] | None = None
     active_at: datetime | None = None
 
 
@@ -128,18 +115,10 @@ class FormQuestions(BaseModel, table=True):
     section_id: UUID = Field(
         foreign_key="formsections.id"
     )  # Reference to the parent section
-    label: str  # The question text shown to the user
-    prompt: str | None = None  # The conversational prompt for the question
-    field_type: FormFieldTypes  # Type of the question (text, number, etc.)
-    required: bool = False  # Whether the field is required
-    order: int  # Position of the question within the section
-
-    # For choice or multiple choice questions, these are the available options
-    options: list[str] | None = Field(
-        default_factory=list,
-        sa_column=Column(ARRAY(Text())),
-        description="Applicable for single/multiple choice fields",
-    )
+    prompt: str
+    description: str
+    required: bool = False
+    order: int
     embedding: list[float] | None = Field(default=None, sa_column=Column(Vector(768)))
 
     section: "FormSections" = Relationship(back_populates="questions")
@@ -148,22 +127,18 @@ class FormQuestions(BaseModel, table=True):
 
 class FormQuestionsCreate(SQLModel):
     section_id: UUID
-    label: str
-    prompt: str | None = None
-    field_type: FormFieldTypes
+    prompt: str
+    description: str
     required: bool
     order: int
-    options: list[str] | None = None
 
 
 class FormQuestionsRead(SQLModel):
     id: UUID
     section_id: UUID
-    label: str
-    prompt: str | None = None
-    field_type: FormFieldTypes
+    prompt: str
+    description: str
     required: bool
-    options: list[str] | None = None
     order: int
     created_at: datetime
     updated_at: datetime | None
@@ -171,11 +146,9 @@ class FormQuestionsRead(SQLModel):
 
 class FormQuestionsUpdate(SQLModel):
     section_id: UUID
-    label: str | None = None
     prompt: str | None = None
-    field_type: FormFieldTypes | None = None
+    description: str | None = None
     order: int | None = None
-    options: list[str] | None = None
     required: bool | None = None
 
 

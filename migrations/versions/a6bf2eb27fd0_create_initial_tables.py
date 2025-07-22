@@ -192,24 +192,10 @@ def upgrade() -> None:
         sa.Column("deleted_at", sa.DateTime(), nullable=True),
         sa.Column("is_deleted", sa.Boolean(), nullable=False),
         sa.Column("section_id", sa.Uuid(), nullable=False),
-        sa.Column("label", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column("prompt", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-        sa.Column(
-            "field_type",
-            sa.Enum(
-                "TEXT",
-                "NUMBER",
-                "BOOLEAN",
-                "DATETIME",
-                "SINGLE_CHOICE",
-                "MULTIPLE_CHOICE",
-                name="formfieldtypes",
-            ),
-            nullable=False,
-        ),
+        sa.Column("description", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column("prompt", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("required", sa.Boolean(), nullable=False),
         sa.Column("order", sa.Integer(), nullable=False),
-        sa.Column("options", postgresql.ARRAY(sa.Text()), nullable=True),
         sa.Column(
             "embedding", pgvector.sqlalchemy.vector.VECTOR(dim=768), nullable=True
         ),

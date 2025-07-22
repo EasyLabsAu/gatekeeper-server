@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 
@@ -10,7 +9,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from src.core.config import settings
 from src.helpers.auth import hash_password
 from src.models.contexts import ContextCategory, Contexts
-from src.models.forms import FormFieldTypes, FormQuestions, Forms, FormSections
+from src.models.forms import FormQuestions, Forms, FormSections
 from src.models.providers import ProviderAccess, Providers
 
 provider_data = {
@@ -38,56 +37,48 @@ sections_data = [
 questions_data = {
     "Customer Info": [
         {
-            "label": "Name",
+            "description": "This question asks for the full legal name of the customer, including first, middle, and last names. The response should be the complete name as it appears on official documents or identification. It is crucial for identifying the customer and personalizing future interactions. The input should be a non-empty string containing at least one name field.",
             "prompt": "What is your full name?",
-            "field_type": FormFieldTypes.TEXT,
             "required": True,
             "order": 1,
         },
         {
-            "label": "Phone Number",
+            "description": "This question asks for the customer's phone number, which should be in a valid format, typically including a country code, area code, and local number. This is necessary for communication regarding the job. The response should be a valid phone number (e.g., +1-555-1234 or 555-1234).",
             "prompt": "Could you please provide your phone number?",
-            "field_type": FormFieldTypes.NUMBER,
             "required": True,
             "order": 2,
         },
     ],
     "Job Details": [
         {
-            "label": "Is this an exterior job?",
+            "description": "This question confirms whether the painting job is for the exterior of the property. A 'Yes' answer indicates that the job will involve exterior surfaces, while 'No' means the job will be for indoor areas. The expected input is either 'Yes' or 'No'.",
             "prompt": "Is the paint job for the exterior of your property?",
-            "field_type": FormFieldTypes.BOOLEAN,
             "required": True,
             "order": 1,
-            "options": ["Yes", "No"],
         },
         {
-            "label": "Preferred Date",
+            "description": "This optional question asks if the customer has a preferred start date for the painting job. If provided, the date should be in the format 'YYYY-MM-DD', or the customer can indicate an expression such as 'As soon as possible' or 'No preference'. If no date is provided, the company will follow up to suggest available options.",
             "prompt": "Do you have a preferred date for the job to start?",
-            "field_type": FormFieldTypes.DATETIME,
             "required": False,
             "order": 2,
         },
     ],
     "Preferences": [
         {
-            "label": "Paint Finish Type",
+            "description": "This question asks the customer about their preferred paint finish. The answer will help determine the look and durability of the job. Common options include matte (flat), eggshell (low sheen), satin, semi-gloss, and glossy. The expected input is a string describing the paint finish, such as 'Matte', 'Eggshell', 'Glossy', etc.",
             "prompt": "What type of paint finish are you looking for? (Eg. Matte, Eggshell, or Glossy)",
-            "field_type": FormFieldTypes.SINGLE_CHOICE,
             "required": True,
             "order": 1,
-            "options": ["Matte", "Eggshell", "Glossy"],
         },
         {
-            "label": "Colors You Like",
+            "description": "This optional question allows the customer to list any colors they are considering for the paint job. Multiple colors can be listed, separated by commas. This information will help the service provider suggest appropriate color options or prepare swatches. The expected input is a comma-separated list of color names (e.g., 'Red, Blue, Light Gray').",
             "prompt": "Which colors are you considering? You can list multiple, separated by commas.",
-            "field_type": FormFieldTypes.MULTIPLE_CHOICE,
             "required": False,
             "order": 2,
-            "options": ["White", "Blue", "Green", "Yellow", "Gray"],
         },
     ],
 }
+
 
 context_data = [
     {
@@ -225,18 +216,16 @@ def main():
 
             for question_info in questions_data[section.title]:
                 question_embedding = (
-                    f"{question_info['label']}\n{question_info['prompt']}"
+                    f"{question_info['description']}\n{question_info['prompt']}"
                 )
                 if question_info.get("options"):
                     question_embedding += f"\n{','.join(question_info['options'])}"
                 question = FormQuestions(
-                    label=question_info["label"],
+                    description=question_info["description"],
                     prompt=question_info["prompt"],
-                    field_type=question_info["field_type"],
                     required=question_info["required"],
                     order=question_info["order"],
                     section_id=section.id,
-                    options=question_info.get("options"),
                     embedding=embeddings_model.embed_query(question_embedding),
                 )
                 session.add(question)

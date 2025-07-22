@@ -1,6 +1,5 @@
 import json
 import os
-import re
 from collections.abc import AsyncGenerator, Sequence
 from typing import Any, TypedDict
 from uuid import UUID
@@ -28,7 +27,7 @@ from src.helpers.cache import Cache
 from src.helpers.logger import Logger
 from src.helpers.model import APIError
 from src.models.contexts import ContextCategory, Contexts
-from src.models.forms import FormQuery, FormQuestions, Forms, FormSections
+from src.models.forms import FormQuery, Forms
 from src.repositories.contexts import ContextRepository
 from src.repositories.forms import FormRepository
 
@@ -36,27 +35,28 @@ logger = Logger(__name__)
 
 
 class ChatbotError(Exception):
-    """Base exception for chatbot errors"""
-
-    pass
+    def __init__(self, message: str = "An error occurred in the chatbot."):
+        self.message = message
+        super().__init__(self.message)
 
 
 class FormNotFoundError(ChatbotError):
-    """Raised when a form is not found"""
-
-    pass
+    def __init__(self, form_id: str | UUID, message: str | None = None):
+        self.form_id = form_id
+        if message is None:
+            message = f"Form with ID '{form_id}' not found."
+        super().__init__(message)
 
 
 class VectorSearchError(ChatbotError):
-    """Raised when vector search fails"""
-
-    pass
+    def __init__(self, message: str = "Vector search operation failed."):
+        super().__init__(message)
 
 
 class FormQuestion(TypedDict):
     id: str
     prompt: str | None
-    label: str
+    description: str
 
 
 class ChatbotResponse(TypedDict):
@@ -71,6 +71,7 @@ class Chatbot:
     FORM_RESPONSES_CACHE_KEY_PREFIX = "form_responses"
     SYSTEM_PROMPT_CACHE_KEY = "system_prompt"
     FORM_INDEX_CACHE_KEY = "form_index"
+    SESSION_FORMS_KEY = "session_forms"
 
     def __init__(
         self,
@@ -119,7 +120,7 @@ class Chatbot:
             embedding_service=self.embeddings,
             id_column="id",
             content_column="name",
-            metadata_columns=["id", "description"],  # Ensure 'id' is in metadata
+            metadata_columns=["id", "description"],
         )
         self.context_retriever = self.vector_store.as_retriever()
         self.rag_chain = self._create_rag_chain()
@@ -129,12 +130,17 @@ class Chatbot:
         """Clears all cache entries associated with the current session."""
         logger.info("Clearing cache for session_id: %s", self.session_id)
         try:
+            session_forms = await self.cache.get(self.SESSION_FORMS_KEY)
+            if isinstance(session_forms, list):
+                for form_id in session_forms:
+                    await self.cache.delete(
+                        f"{self.FORM_RESPONSES_CACHE_KEY_PREFIX}:{form_id}"
+                    )
+                await self.cache.delete(self.SESSION_FORMS_KEY)
             await self.cache.delete(self.FORM_CONTEXT_CACHE_KEY)
             await self.cache.delete(self.HISTORY_CACHE_KEY)
-            # Note: This does not clear form responses, which are hashed by form_id.
-            # For the test script, this is sufficient as it prevents stale form contexts.
             logger.info("Cache cleared for session_id: %s", self.session_id)
-        except Exception as e:
+        except RedisError as e:
             logger.error("Error clearing cache for session %s: %s", self.session_id, e)
 
     async def _create_form_index_cache(self):
@@ -155,11 +161,11 @@ class Chatbot:
                     await self.cache.set(
                         self.FORM_INDEX_CACHE_KEY, form_index, ttl=3600
                     )
-                    logger.info(f"Successfully cached {len(form_index)} forms.")
+                    logger.info("Successfully cached %s forms.", len(form_index))
                 else:
                     logger.warning("No valid forms found to create index cache.")
-        except Exception as e:
-            logger.error(f"Failed to create form index cache: {e}")
+        except (APIError, RedisError) as e:
+            logger.error("Failed to create form index cache: %s", e)
 
     async def _initialize_system_prompt(self):
         """Initialize system prompt with caching"""
@@ -183,8 +189,8 @@ class Chatbot:
                 self.SYSTEM_PROMPT_CACHE_KEY, self.system_prompt, ttl=3600
             )
 
-        except Exception as e:
-            logger.error(f"Error initializing system prompt: {e}")
+        except (APIError, RedisError) as e:
+            logger.error("Error initializing system prompt: %s", e)
             self.system_prompt = "You are a helpful assistant."
 
     def _build_system_prompt(self, contexts: list) -> str:
@@ -233,9 +239,9 @@ class Chatbot:
                 formatted_docs.append(content)
             return "\n\n---\n\n".join(formatted_docs)
 
-        template = """{system_prompt}
-                Use the following pieces of retrieved context to answer the user's question.
-                If you don't know the answer, just say that you don't know.
+        template = '''{system_prompt}
+                Use the following pieces of retrieved context to answer the user\'s question.
+                If you don\'t know the answer, just say that you don\'t know.
                 Keep the answer concise and helpful.
 
                 Context:
@@ -243,7 +249,7 @@ class Chatbot:
 
                 Question: {question}
 
-                Answer:"""
+                Answer:'''
         prompt = ChatPromptTemplate.from_template(template)
 
         return (
@@ -279,23 +285,91 @@ class Chatbot:
             form_questions = await self._get_form_questions_ordered(form_id)
 
             if not form_questions:
-                logger.error(f"No questions found for form {form_id}")
-                raise FormNotFoundError(f"No questions found for form {form_id}")
+                logger.error("No questions found for form %s", form_id)
+                raise FormNotFoundError(
+                    form_id, f"No questions found for form {form_id}"
+                )
 
             form_context = {
                 "form_id": form_id,
                 "questions": form_questions,
                 "current_question_index": 0,
+                "validation_failures": 0,
             }
 
             await self.cache.set(self.FORM_CONTEXT_CACHE_KEY, form_context)
 
-            first_question = form_context["questions"][0]
-            return first_question.get("prompt") or first_question.get("label")
+            session_forms = await self.cache.get(self.SESSION_FORMS_KEY) or []
+            if form_id not in session_forms:
+                session_forms.append(form_id)
+                await self.cache.set(self.SESSION_FORMS_KEY, session_forms)
 
-        except Exception as e:
-            logger.error(f"Error adding form context: {e}")
-            return "Sorry, I'm having trouble starting the form. Please try again later."
+            first_question = form_context["questions"][0]
+            return first_question.get("prompt") or first_question.get("description")
+
+        except FormNotFoundError as e:
+            logger.error("Form not found in add_form_context: %s", e)
+            raise ChatbotError("Sorry, I couldn't find the form you requested.") from e
+        except (RedisError, ChatbotError) as e:
+            logger.error("Error adding form context: %s", e)
+            raise ChatbotError(
+                "Sorry, I'm having trouble starting the form. Please try again later."
+            ) from e
+
+    async def _validate_form_response(
+        self, user_input: str, question: FormQuestion
+    ) -> bool:
+        """Validates user input based on the question's description."""
+        if not question.get("description"):
+            return True
+
+        prompt_template = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are a validation assistant. Your task is to determine if the user's answer is a reasonable attempt to answer the question based on the provided description. The user might not follow the instructions perfectly. Be lenient. Respond with only 'yes' or 'no'.",
+                ),
+                (
+                    "human",
+                    "I was asked: '{prompt}'. The requirements for the answer are: '{description}'. My answer is: '{answer}'. Is this a reasonable attempt?",
+                ),
+            ]
+        )
+        chain = prompt_template | self.model | StrOutputParser()
+        try:
+            response = await chain.ainvoke(
+                {
+                    "prompt": question.get("prompt") or "No prompt provided.",
+                    "description": question["description"],
+                    "answer": user_input,
+                }
+            )
+            logger.info(
+                "Validation response for input '%s': %s", user_input, response
+            )
+            return "yes" in response.lower()
+        except LangChainException as e:
+            logger.error("Error during form response validation: %s", e)
+            return True
+
+    async def _generate_friendly_validation_error(self, description: str) -> str:
+        """Generates a concise, friendly error message from a detailed description."""
+        prompt_template = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are a helpful assistant. Summarize the following requirement in a short, friendly, and encouraging sentence. Start with 'Please make sure...' or a similar phrase.",
+                ),
+                ("human", "{description}"),
+            ]
+        )
+        chain = prompt_template | self.model | StrOutputParser()
+        try:
+            message = await chain.ainvoke({"description": description})
+            return message
+        except LangChainException as e:
+            logger.error("Error generating friendly validation error: %s", e)
+            return "It looks like your answer might not be quite right. Please try again."
 
     async def _handle_form_response(
         self, user_input: str, form_context: dict[str, Any]
@@ -303,6 +377,29 @@ class Chatbot:
         form_id = form_context["form_id"]
         current_question_index = form_context["current_question_index"]
         current_question = form_context["questions"][current_question_index]
+
+        is_valid = await self._validate_form_response(user_input, current_question)
+
+        if not is_valid:
+            validation_failures = form_context.get("validation_failures", 0) + 1
+            form_context["validation_failures"] = validation_failures
+
+            if validation_failures >= 2:
+                logger.warning(
+                    "Validation failed twice for question %s. Accepting user input '%s' and moving on.",
+                    current_question["id"],
+                    user_input,
+                )
+            else:
+                await self.cache.set(self.FORM_CONTEXT_CACHE_KEY, form_context)
+                friendly_error = await self._generate_friendly_validation_error(
+                    current_question["description"]
+                )
+                re_prompt = (
+                    current_question.get("prompt")
+                    or current_question.get("description")
+                )
+                return f"{friendly_error} Let's try that again. {re_prompt}"
 
         try:
             await self.cache.hash_set(
@@ -315,6 +412,7 @@ class Chatbot:
             return "Sorry, I'm having trouble saving your response. Please try again."
 
         form_context["current_question_index"] += 1
+        form_context["validation_failures"] = 0
 
         if form_context["current_question_index"] < len(form_context["questions"]):
             try:
@@ -322,7 +420,7 @@ class Chatbot:
                 next_question = form_context["questions"][
                     form_context["current_question_index"]
                 ]
-                return next_question.get("prompt") or next_question.get("label")
+                return next_question.get("prompt") or next_question.get("description")
             except RedisError as e:
                 logger.error("Error advancing to next question: %s", e)
                 return "Sorry, I'm having trouble with the form. Please try again."
@@ -371,8 +469,8 @@ class Chatbot:
             async for chunk in self._generate_rag_response(user_input):
                 yield chunk
 
-        except Exception as e:
-            logger.error(f"Error in chat: {e}")
+        except (RedisError, APIError, ChatbotError) as e:
+            logger.error("Error in chat: %s", e)
             yield {
                 "flow": "generic",
                 "content": "Sorry, I'm having trouble responding right now. Please try again later.",
@@ -430,10 +528,10 @@ class Chatbot:
                 for form in form_index:
                     form_name_keywords = set(form["name"].lower().split())
                     if form_name_keywords & user_input_keywords:
-                        logger.info(f"Found keyword match for form '{{form['name']}}'.")
+                        logger.info("Found keyword match for form '%s'", form["name"])
                         return form["id"]
-        except Exception as e:
-            logger.warning(f"Could not use form index cache for keyword search: {e}")
+        except RedisError as e:
+            logger.warning("Could not use form index cache for keyword search: %s", e)
 
         # 2. Vector search on form names and descriptions (medium confidence)
         try:
@@ -451,12 +549,22 @@ class Chatbot:
                     form_id = str(doc.metadata.get("id"))
                     if form_id and form_id.lower() != "none":
                         logger.info(
-                            f"Found semantic match for form '{{doc.page_content}}' with score {score}."
+                            "Found semantic match for form '%s' with score %s.",
+                            doc.page_content,
+                            score,
                         )
                         return form_id
 
-        except Exception as e:
-            logger.error(f"Error during vector search for form intent: {e}")
+        except VectorSearchError as e:
+            logger.error("Error during vector search for form intent: %s", e)
+            # Re-raise the specific error to be handled by the caller
+            raise
+        except LangChainException as e:
+            logger.error("An unexpected error occurred during vector search: %s", e)
+            # Wrap unexpected errors in a generic ChatbotError
+            raise ChatbotError(
+                "An unexpected error occurred while searching for forms."
+            ) from e
 
         return None
 
@@ -465,8 +573,8 @@ class Chatbot:
         try:
             form_response = await self.form_repo.get(UUID(form_id))
             if not form_response or not form_response.data:
-                logger.error(f"Form with id {form_id} not found via repository.")
-                return []
+                logger.error("Form with id %s not found via repository.", form_id)
+                raise FormNotFoundError(form_id)
 
             form = form_response.data
 
@@ -479,23 +587,25 @@ class Chatbot:
                     all_questions.append(
                         {
                             "id": str(q.id),
-                            "label": q.label,
+                            "description": q.description,
                             "prompt": q.prompt,
                         }
                     )
             return all_questions
         except APIError as e:
-            logger.error(f"APIError fetching questions for form {form_id}: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Error fetching questions for form {form_id}: {e}")
-            return []
+            logger.error("APIError fetching questions for form %s: %s", form_id, e)
+            raise ChatbotError(
+                f"A database error occurred while fetching form '{form_id}'."
+            ) from e
+        except ValueError as e:
+            logger.error("Error fetching questions for form %s: %s", form_id, e)
+            raise ChatbotError("An unexpected error occurred.") from e
 
-    async def _handle_cache_error(self, operation: str, error: Exception):
+    async def _handle_cache_error(self, operation: str, error: RedisError):
         """Handle cache-related errors gracefully"""
-        logger.error(f"Cache error during {operation}: {error}")
+        logger.error("Cache error during %s: %s", operation, error)
 
-    async def _handle_vector_search_error(self, error: Exception):
+    async def _handle_vector_search_error(self, error: VectorSearchError):
         """Handle vector search errors"""
-        logger.error(f"Vector search error: {error}")
+        logger.error("Vector search error: %s", error)
         raise VectorSearchError("Failed to search for relevant items.") from error
